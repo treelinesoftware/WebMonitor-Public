@@ -421,7 +421,7 @@ $user = require_login_page();
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=55" />
+<link rel="stylesheet" href="assets/style.css?v=56" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -440,6 +440,7 @@ $user = require_login_page();
       <button class="view-btn nav-btn" data-view="reports" type="button">Reports</button>
       <button class="view-btn nav-btn" data-view="scans" type="button">Scans</button>
       <button class="view-btn nav-btn" data-view="security" type="button">Security <span class="tab-count" id="count-security"></span></button>
+      <button class="view-btn nav-btn" data-view="flexlm" type="button">Licences <span class="tab-count" id="count-flexlm"></span></button>
     </nav>
     <div class="app-bar-right">
       <button type="button" class="scan-pill no-print" id="scan-pill" title="Open the scan queue">Scans · checking…</button>
@@ -543,6 +544,34 @@ $user = require_login_page();
     </div>
 
     <div class="net-switch panel-box hidden" id="net-switch"></div>
+  </section>
+
+  <section id="flexlm-view" class="hidden">
+    <div class="report-head">
+      <div><h2 class="report-title">Licences</h2><div class="muted small" id="flm-summary-line">FlexLM licence servers</div></div>
+      <div class="section-actions no-print">
+        <button type="button" class="primary-btn admin-only" id="flm-add">Add licence server</button>
+      </div>
+    </div>
+    <div id="flm-notice"></div>
+    <div class="svc-tiles" id="flm-tiles"></div>
+    <div class="host-toolbar">
+      <div class="segmented" role="group" aria-label="Show" id="flm-tabs">
+        <button class="tab-btn active" data-flm-tab="servers" type="button">Servers</button>
+        <button class="tab-btn" data-flm-tab="inuse" type="button">In use now <span class="tab-count" id="flm-count-inuse"></span></button>
+        <button class="tab-btn" data-flm-tab="history" type="button">History</button>
+      </div>
+      <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="flm-search" placeholder="Search server, feature, user, computer…" autocomplete="off" aria-label="Search licences" /></label>
+    </div>
+    <div id="flm-body"></div>
+    <details class="no-print sec-about"><summary>How licence monitoring works</summary>
+      <p class="hint">WebMonitor runs <code>lmutil lmstat -a</code> against each licence server on its schedule (every 5 minutes by default).
+        It records whether the licence server and its vendor daemons are up, how many licences of each feature are in use, when
+        they expire and who has them checked out. A server shows down after two failed checks in a row.</p>
+      <p class="hint">lmutil comes from Flexera and isn't included with WebMonitor. If the page says it's missing, see
+        <a href="#help=flexlm" data-help-link="flexlm">Help → FlexLM licences</a> for where to put it.</p>
+    </details>
   </section>
 
   <section id="help-view" class="hidden">
@@ -887,6 +916,21 @@ $user = require_login_page();
   </div>
 </div>
 
+<div id="flm-backdrop" class="modal-backdrop hidden">
+  <div class="modal svc-modal" role="dialog" aria-labelledby="flm-form-title">
+    <button id="flm-close" class="modal-close" aria-label="Close">&times;</button>
+    <h2 id="flm-form-title">Add licence server</h2>
+    <form id="flm-form" class="settings-form" autocomplete="off"></form>
+  </div>
+</div>
+
+<div id="flm-detail-backdrop" class="modal-backdrop hidden">
+  <div class="modal modal-wide" role="dialog" aria-labelledby="flm-detail-title">
+    <button id="flm-detail-close" class="modal-close" aria-label="Close">&times;</button>
+    <div id="flm-detail"></div>
+  </div>
+</div>
+
 <div id="netspeed-backdrop" class="modal-backdrop hidden">
   <div class="modal svc-modal" role="dialog" aria-labelledby="netspeed-title">
     <button id="netspeed-close" class="modal-close" aria-label="Close">&times;</button>
@@ -967,12 +1011,12 @@ $user = require_login_page();
   </div>
 </div>
 
-<script src="assets/app.js?v=51"></script>
+<script src="assets/app.js?v=52"></script>
 <script src="assets/topology.js?v=45"></script>
 <script src="assets/nas.js?v=45"></script>
 <script src="assets/history.js?v=45"></script>
-<script src="assets/settings.js?v=50"></script>
-<script src="assets/updates.js?v=52"></script>
+<script src="assets/settings.js?v=51"></script>
+<script src="assets/updates.js?v=53"></script>
 <script src="assets/configbackup.js?v=45"></script>
 <script src="assets/portmap.js?v=45"></script>
 <script src="assets/reports.js?v=45"></script>
@@ -983,7 +1027,8 @@ $user = require_login_page();
 <script src="assets/vulns.js?v=2"></script>
 <script src="assets/services.js?v=1"></script>
 <script src="assets/network.js?v=3"></script>
-<script src="assets/help.js?v=1"></script>
+<script src="assets/flexlm.js?v=1"></script>
+<script src="assets/help.js?v=3"></script>
 </body>
 </html>
 WEBMON_FILE_EOF
@@ -3622,6 +3667,120 @@ require_once __DIR__ . '/../includes/auth.php';
 header('Content-Type: application/json');
 require_api_auth();
 echo json_encode(device_inventory());
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/api/flexlm.php")"
+cat > "$APP_DIR/api/flexlm.php" <<'WEBMON_FILE_EOF'
+<?php
+// FlexLM licence servers (Licences tab).
+//   GET                              -> {lmutil, servers: [... with features and current checkouts]}
+//   GET ?id=ID&output=1              -> {output, checkedAt}: the last lmstat output
+//   GET ?usage=ID&days=1|7|30|90|365 -> licences in use per feature over time
+//   GET ?history=1&days=7&q=&server= -> checkout history and top users
+//   POST {name, target, interval, alert, downAfterMin, fullPct, expiryWarnDays, notes}  -> add; admins
+//   PUT ?id=ID {...}                 -> change; admins
+//   DELETE ?id=ID                    -> remove, with its history; admins
+//   POST ?id=ID&action=check         -> check now (the background job runs it within a minute); admins
+require_once __DIR__ . '/../includes/flexlm.php';
+require_once __DIR__ . '/../includes/auth.php';
+header('Content-Type: application/json');
+$user = require_api_auth_admin_writes();
+session_write_close();
+
+function fail(int $code, string $msg): void {
+    http_response_code($code);
+    echo json_encode(['error' => $msg]);
+    exit;
+}
+
+function load_server(int $id): array {
+    $st = db()->prepare('SELECT * FROM flexlm_servers WHERE id = ?');
+    $st->execute([$id]);
+    $s = $st->fetch();
+    if (!$s) fail(404, 'That licence server no longer exists.');
+    return $s;
+}
+
+function overview(): array {
+    [$prefix, $problem] = flexlm_lmutil_command();
+    return ['lmutil' => ['path' => flexlm_lmutil_path(), 'ok' => $prefix !== null, 'problem' => $problem,
+                         'searched' => FLEXLM_LMUTIL_PATHS],
+            'servers' => flexlm_list()];
+}
+
+$method = $_SERVER['REQUEST_METHOD'];
+$id = (int) ($_GET['id'] ?? 0);
+
+if ($method === 'GET') {
+    if ($id && isset($_GET['output'])) {
+        $s = load_server($id);
+        echo json_encode(['output' => $s['last_output'], 'checkedAt' => $s['last_check_at'] !== null ? (int) $s['last_check_at'] : null]);
+        exit;
+    }
+    if (isset($_GET['usage'])) {
+        $s = load_server((int) $_GET['usage']);
+        $days = (int) ($_GET['days'] ?? 1);
+        if (!in_array($days, [1, 7, 30, 90, 365], true)) $days = 1;
+        echo json_encode(flexlm_usage_series((int) $s['id'], $days));
+        exit;
+    }
+    if (isset($_GET['history'])) {
+        $days = max(1, min(FLEXLM_CHECKOUTS_KEEP_DAYS, (int) ($_GET['days'] ?? 7)));
+        echo json_encode(flexlm_history($days, mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 100),
+                                        !empty($_GET['server']) ? (int) $_GET['server'] : null));
+        exit;
+    }
+    echo json_encode(overview());
+    exit;
+}
+
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
+$pdo = db();
+
+if ($method === 'POST' && $id && ($_GET['action'] ?? '') === 'check') {
+    $s = load_server($id);
+    if (!$s['enabled']) fail(400, 'This server is paused. Edit it and untick Paused first.');
+    $pdo->prepare('UPDATE flexlm_servers SET check_requested = 1 WHERE id = ?')->execute([$id]);
+    echo json_encode(overview());
+    exit;
+}
+
+if ($method === 'POST') {
+    [$row, $err] = flexlm_validate($input);
+    if ($err) fail(400, $err);
+    $pdo->prepare('INSERT INTO flexlm_servers (name, target, interval_sec, enabled, alert, down_after_min, full_pct, expiry_warn_days, notes,
+                   check_requested, created_by, created_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?)')
+        ->execute([$row['name'], $row['target'], $row['interval_sec'], (int) $row['alert'], $row['down_after_min'], $row['full_pct'],
+                   $row['expiry_warn_days'], $row['notes'], isset($user['id']) ? (int) $user['id'] : null, now_ms()]);
+    echo json_encode(['id' => (int) $pdo->lastInsertId()] + overview());
+    exit;
+}
+
+if ($method === 'PUT' && $id) {
+    $s = load_server($id);
+    [$row, $err] = flexlm_validate($input, $s);
+    if ($err) fail(400, $err);
+    $changed = $row['target'] !== $s['target'];
+    $pdo->prepare('UPDATE flexlm_servers SET name = ?, target = ?, interval_sec = ?, enabled = ?, alert = ?, down_after_min = ?, full_pct = ?,
+                   expiry_warn_days = ?, notes = ?' . ($changed ? ", status = 'pending', fail_count = 0, message = NULL, check_requested = 1" : '') . ' WHERE id = ?')
+        ->execute([$row['name'], $row['target'], $row['interval_sec'], (int) $row['enabled'], (int) $row['alert'], $row['down_after_min'],
+                   $row['full_pct'], $row['expiry_warn_days'], $row['notes'], $id]);
+    if ($changed) {
+        // A different server: its old features and open checkouts no longer apply.
+        $pdo->prepare('DELETE FROM flexlm_features WHERE server_id = ?')->execute([$id]);
+        $pdo->prepare('UPDATE flexlm_checkouts SET ended_at = last_seen WHERE server_id = ? AND ended_at IS NULL')->execute([$id]);
+    }
+    echo json_encode(overview());
+    exit;
+}
+
+if ($method === 'DELETE' && $id) {
+    $pdo->prepare('DELETE FROM flexlm_servers WHERE id = ?')->execute([$id]);
+    echo json_encode(overview());
+    exit;
+}
+
+fail(405, 'method not allowed');
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/api/history.php")"
@@ -6804,6 +6963,7 @@ function renderAlertsBar() {
       if (li.dataset.host && hostsById.has(+li.dataset.host)) openModal(+li.dataset.host);
       else if ((li.dataset.type || '').startsWith('service_')) showView('services');
       else if (li.dataset.type === 'speedtest') showView('network');   // network.js
+      else if ((li.dataset.type || '').startsWith('flexlm_')) showView('flexlm');   // flexlm.js
       else { showView('reports'); showReport('traffic'); }   // a device without a card: see its traffic
     };
     li.addEventListener('click', open);
@@ -8112,6 +8272,509 @@ cat > "$APP_DIR/assets/favicon.svg" <<'WEBMON_FILE_EOF'
 </svg>
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/assets/flexlm.js")"
+cat > "$APP_DIR/assets/flexlm.js" <<'WEBMON_FILE_EOF'
+// Licences tab: FlexLM licence servers, the licences in use and who has them.
+// Uses api(), escapeHtml(), fmtAgo(), fmtDuration(), cssVar(), IS_ADMIN and
+// showView() from app.js / updates.js, and Chart.js.
+
+const FLM_STATUS_LABEL = { up: 'Up', warn: 'Warning', down: 'Down', pending: 'Pending', unknown: 'Unknown', paused: 'Paused' };
+const FLM_INTERVALS = [[60, '1 minute'], [120, '2 minutes'], [300, '5 minutes'], [600, '10 minutes'], [900, '15 minutes'],
+  [1800, '30 minutes'], [3600, '1 hour']];
+const FLM_COLORS = ['#5b8cff', '#33d17a', '#f0ad4e', '#ef5350', '#a78bfa', '#22d3ee', '#f472b6', '#facc15', '#94a3b8', '#fb923c'];
+
+let flmData = null;          // {lmutil, servers}
+let flmVisible = false;
+let flmTimer = null;
+let flmTab = 'servers';
+let flmSearch = '';
+let flmHistory = null;
+let flmHistoryDays = 7;
+let flmHistoryTimer = null;
+let flmDetailId = null;      // server open in the details window
+let flmUsageDays = 1;
+let flmChart = null;
+
+async function loadFlexlm() {
+  clearTimeout(flmTimer);
+  try {
+    const resp = await api('api/flexlm.php');
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not load the licence servers');
+    setFlexlm(data);
+  } catch (err) {
+    if (flmVisible) document.getElementById('flm-body').innerHTML = `<p class="details-error">${escapeHtml(err.message)}</p>`;
+  }
+  // While a check is waiting for the background job, look again soon.
+  const waiting = flmData && flmData.servers.some(s => s.checkRequested);
+  flmTimer = setTimeout(loadFlexlm, flmVisible ? (waiting ? 5000 : 30000) : 120000);
+}
+
+function setFlexlm(data) {
+  flmData = data;
+  const down = data.servers.filter(s => s.status === 'down').length;
+  const el = document.getElementById('count-flexlm');
+  el.textContent = down ? String(down) : '';
+  el.classList.toggle('crit', down > 0);
+  if (flmVisible) renderFlexlm();
+  if (flmDetailId != null) renderFlexlmDetail(false);
+}
+
+function flexlmViewShown(visible) {
+  flmVisible = visible;
+  if (visible) { if (flmData) renderFlexlm(); loadFlexlm(); }
+}
+
+// ---- Helpers
+
+function flmPill(s) {
+  const cls = { up: 'up', warn: 'pending', down: 'down' }[s.status] || 'muted';
+  return `<span class="status-pill ${cls}">${FLM_STATUS_LABEL[s.status] || escapeHtml(s.status)}</span>`;
+}
+
+function flmMeter(used, total, pctWarn = 100) {
+  if (!total) return '<span class="muted small">uncounted</span>';
+  const pct = Math.min(100, Math.round(used / total * 100));
+  const cls = used >= total ? 'crit' : pct >= Math.min(pctWarn || 100, 85) ? 'warn' : '';
+  return `<div class="flm-meter" title="${used} of ${total} in use (${pct}%)">
+    <div class="flm-meter-label"><span><strong>${used}</strong> / ${total}</span><span class="muted">${pct}%</span></div>
+    <div class="storage-meter"><div class="storage-fill ${cls}" style="width:${pct}%"></div></div></div>`;
+}
+
+function flmDaysUntil(date) {
+  const d = new Date(date + 'T00:00:00');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.round((d - today) / 86400000);
+}
+
+function flmExpiry(date, warnDays = 30) {
+  if (!date) return '<span class="muted">permanent</span>';
+  const days = flmDaysUntil(date);
+  const cls = days < 0 ? 'down-text' : days <= warnDays ? 'warn-text' : '';
+  const when = days < 0 ? `expired ${-days} d ago` : days === 0 ? 'today' : `in ${days} d`;
+  return `<span class="${cls}" title="${escapeHtml(date)}">${escapeHtml(date)} <span class="muted small">${when}</span></span>`;
+}
+
+function flmSince(ms) {
+  return fmtDuration(Math.max(0, (Date.now() - ms) / 1000));
+}
+
+function flmMatches(...fields) {
+  if (!flmSearch) return true;
+  const hay = fields.filter(Boolean).join(' ').toLowerCase();
+  return flmSearch.split(/\s+/).every(t => hay.includes(t));
+}
+
+function flmAllCheckouts() {
+  return (flmData ? flmData.servers : []).flatMap(s => s.checkouts.map(c => ({ ...c, serverName: s.name })));
+}
+
+// ---- Rendering
+
+function renderFlexlm() {
+  const d = flmData;
+  if (!d) return;
+  const all = d.servers;
+  const count = st => all.filter(s => s.status === st).length;
+  const used = all.reduce((n, s) => n + s.used, 0);
+  const total = all.reduce((n, s) => n + s.total, 0);
+  const users = new Set(flmAllCheckouts().map(c => c.user)).size;
+  const soon = all.filter(s => s.earliestExpiry && flmDaysUntil(s.earliestExpiry) <= (s.expiryWarnDays || 30)).length;
+  const full = all.reduce((n, s) => n + s.features.filter(f => f.total && f.used >= f.total).length, 0);
+  document.getElementById('flm-summary-line').textContent = all.length
+    ? `${all.length} licence server${all.length === 1 ? '' : 's'} · ${all.reduce((n, s) => n + s.features.length, 0)} features`
+    : 'FlexLM licence servers';
+  document.getElementById('flm-count-inuse').textContent = users ? String(users) : '';
+
+  const notice = document.getElementById('flm-notice');
+  notice.innerHTML = d.lmutil.ok ? '' : `<div class="flm-notice details-error">
+      <strong>${escapeHtml(d.lmutil.problem || 'lmutil is not available.')}</strong>
+      ${d.lmutil.path ? '' : `<br>WebMonitor looks for it in ${d.lmutil.searched.map(p => `<code>${escapeHtml(p)}</code>`).join(', ')}.`}
+      <a href="#help=flexlm" data-help-link="flexlm">How to install lmutil</a></div>`;
+
+  const tile = (key, label, value, sub, tone) =>
+    `<button type="button" class="kpi ${tone}" data-flm-tile="${key}"><span class="kpi-label">${label}</span><span class="kpi-value">${value}</span><span class="kpi-sub">${sub}</span></button>`;
+  document.getElementById('flm-tiles').innerHTML = all.length ? [
+    tile('servers', 'Servers', all.length, `${count('up') + count('warn')} answering${count('paused') ? ` · ${count('paused')} paused` : ''}`, ''),
+    tile('servers', 'Down', count('down'), count('down') ? 'needs attention' : 'all answering', count('down') ? 'bad' : 'good'),
+    tile('servers', 'Licences in use', used, total ? `of ${total} (${Math.round(used / total * 100)}%)` : 'none counted', full ? 'warn' : ''),
+    tile('inuse', 'Users now', users, `${flmAllCheckouts().length} checkouts`, ''),
+    tile('servers', 'Warnings', count('warn'), soon ? `${soon} server${soon === 1 ? '' : 's'} with licences expiring` : full ? `${full} feature${full === 1 ? '' : 's'} full` : 'none', count('warn') ? 'warn' : ''),
+  ].join('') : '';
+
+  document.querySelectorAll('#flm-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.flmTab === flmTab));
+  if (flmTab === 'inuse') return renderFlexlmInUse();
+  if (flmTab === 'history') return renderFlexlmHistory();
+  renderFlexlmServers();
+}
+
+function renderFlexlmServers() {
+  const body = document.getElementById('flm-body');
+  const all = flmData.servers;
+  if (!all.length) {
+    body.innerHTML = `<div class="svc-empty">
+      <h3>No licence servers yet</h3>
+      <p class="muted">Add a FlexLM licence server by its port and address (for example 27000@192.168.1.20) to see whether it's up,
+        how many licences are in use, when they expire and who has them.</p>
+      ${IS_ADMIN ? '<button type="button" class="primary-btn" data-flm-act="add">Add your first licence server</button>' : ''}</div>`;
+    return;
+  }
+  const rank = { down: 0, warn: 1, unknown: 2, pending: 3, up: 4, paused: 5 };
+  const rows = all.filter(s => flmMatches(s.name, s.target, s.message, s.notes, ...s.features.map(f => f.name), ...s.vendors.map(v => v.name),
+    ...s.checkouts.flatMap(c => [c.user, c.host])))
+    .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || a.name.localeCompare(b.name));
+  if (!rows.length) { body.innerHTML = '<div class="empty">Nothing matches.</div>'; return; }
+  body.innerHTML = `<div class="svc-table-wrap"><table class="svc-table flm-table">
+    <thead><tr><th>Status</th><th>Licence server</th><th class="flm-meter-col">Licences in use</th><th class="num">Users</th>
+      <th>Next expiry</th><th>Checked</th>${IS_ADMIN ? '<th></th>' : ''}</tr></thead>
+    <tbody>${rows.map(s => {
+      const vend = s.vendors.map(v => v.up ? escapeHtml(v.name) : `<span class="down-text">${escapeHtml(v.name)} down</span>`).join(', ');
+      const sub = [escapeHtml(s.target), vend, s.lmgrdVersion ? `lmgrd ${escapeHtml(s.lmgrdVersion)}` : ''].filter(Boolean).join(' · ');
+      const users = new Set(s.checkouts.map(c => c.user)).size;
+      const since = s.status !== 'up' && s.changedAt && s.status !== 'pending' ? ` · since ${fmtAgo(s.changedAt).replace(' ago', '')}` : '';
+      return `<tr class="svc-row st-${s.status}">
+        <td>${flmPill(s)}</td>
+        <td class="svc-name-cell">
+          <div class="svc-name"><a href="#" class="flm-link" data-flm-open="${s.id}">${escapeHtml(s.name)}</a>${s.alert ? '' : ' <span class="muted small" title="Alerts are off for this server">🔕</span>'}</div>
+          <div class="svc-sub"><span class="mono">${sub}</span></div>
+          ${s.message ? `<div class="svc-sub ${s.status === 'down' ? 'down-text' : s.status === 'warn' ? 'warn-text' : ''}">${escapeHtml(s.message)}${since}</div>` : ''}
+        </td>
+        <td class="flm-meter-col">${s.features.length ? flmMeter(s.used, s.total, s.fullPct) : '<span class="muted">—</span>'}</td>
+        <td class="num">${users || '<span class="muted">0</span>'}</td>
+        <td class="nowrap">${s.features.length ? flmExpiry(s.earliestExpiry, s.expiryWarnDays) : '<span class="muted">—</span>'}</td>
+        <td class="nowrap muted small">${s.checkRequested ? 'checking…' : s.lastCheck ? fmtAgo(s.lastCheck) : '—'}</td>
+        ${IS_ADMIN ? `<td class="svc-act-cell"><div class="svc-actions">
+          <button type="button" class="card-btn" data-flm-act="check" data-id="${s.id}"${s.checkRequested || !s.enabled ? ' disabled' : ''}>${s.checkRequested ? 'Checking…' : 'Check now'}</button>
+          <button type="button" class="card-btn" data-flm-act="edit" data-id="${s.id}">Edit</button>
+          <button type="button" class="card-btn danger" data-flm-act="delete" data-id="${s.id}">Delete</button></div></td>` : ''}
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+function flmCheckoutTable(list, withServer = true, ended = false) {
+  return `<div class="svc-table-wrap"><table class="svc-table">
+    <thead><tr><th>User</th><th>Computer</th><th>Feature</th>${withServer ? '<th>Server</th>' : ''}<th class="num">Licences</th>
+      <th>${ended ? 'Started' : 'Since'}</th><th class="num">${ended ? 'Duration' : 'For'}</th></tr></thead>
+    <tbody>${list.map(c => `<tr>
+      <td><strong>${escapeHtml(c.user)}</strong></td>
+      <td>${escapeHtml(c.host)}${c.display && c.display !== c.host ? ` <span class="muted small">${escapeHtml(c.display)}</span>` : ''}</td>
+      <td><span class="mono">${escapeHtml(c.feature)}</span>${c.version ? ` <span class="muted small">v${escapeHtml(c.version)}</span>` : ''}</td>
+      ${withServer ? `<td><a href="#" class="flm-link" data-flm-open="${c.serverId}">${escapeHtml(c.serverName || '')}</a></td>` : ''}
+      <td class="num">${c.licenses}</td>
+      <td class="nowrap small">${escapeHtml(new Date(c.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td>
+      <td class="num small">${ended
+        ? (c.endedAt ? fmtDuration((c.endedAt - c.startedAt) / 1000) : '<span class="ok-text">in use</span>')
+        : flmSince(c.startedAt)}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderFlexlmInUse() {
+  const body = document.getElementById('flm-body');
+  const list = flmAllCheckouts().filter(c => flmMatches(c.user, c.host, c.display, c.feature, c.serverName))
+    .sort((a, b) => a.user.localeCompare(b.user) || a.feature.localeCompare(b.feature));
+  if (!flmAllCheckouts().length) {
+    body.innerHTML = '<div class="empty">Nobody has a licence checked out right now.</div>';
+    return;
+  }
+  body.innerHTML = list.length ? flmCheckoutTable(list) : '<div class="empty">Nothing matches.</div>';
+}
+
+async function loadFlexlmHistory() {
+  const q = flmSearch;
+  const days = flmHistoryDays;
+  try {
+    const resp = await api(`api/flexlm.php?history=1&days=${days}&q=${encodeURIComponent(q)}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not load the history');
+    if (q !== flmSearch || days !== flmHistoryDays) return;   // a newer request is on its way
+    flmHistory = data;
+  } catch (err) {
+    flmHistory = { error: err.message };
+  }
+  if (flmVisible && flmTab === 'history') renderFlexlmHistory(false);
+}
+
+function renderFlexlmHistory(load = true) {
+  const body = document.getElementById('flm-body');
+  const range = `<div class="seg flm-range" role="group" aria-label="Range">${[1, 7, 30, 90, 180].map(n =>
+    `<button type="button" class="group-btn${n === flmHistoryDays ? ' active' : ''}" data-flm-hdays="${n}">${n === 1 ? '24 h' : n + ' days'}</button>`).join('')}</div>`;
+  if (load) loadFlexlmHistory();
+  const h = flmHistory;
+  if (!h || h.days !== flmHistoryDays) {
+    if (!h || !h.error) { body.innerHTML = `${range}<div class="switch-info-status">Loading…</div>`; return; }
+  }
+  if (h.error) { body.innerHTML = `${range}<p class="details-error">${escapeHtml(h.error)}</p>`; return; }
+  body.innerHTML = `${range}
+    <div class="flm-history">
+      <div class="panel-box flm-top">
+        <h3>Top users</h3>
+        ${h.topUsers.length ? `<ol class="flm-top-list">${h.topUsers.map(u => `<li>
+          <span class="flm-top-name">${escapeHtml(u.user)}</span>
+          <span class="muted small">${u.hours} h · ${u.sessions} checkout${u.sessions === 1 ? '' : 's'} · ${u.features} feature${u.features === 1 ? '' : 's'}</span></li>`).join('')}</ol>`
+          : '<p class="muted small">No checkouts in this period.</p>'}
+        <p class="hint">Hours run from each checkout's start time to the last check that saw it.</p>
+      </div>
+      <div class="flm-history-list">
+        ${h.checkouts.length ? flmCheckoutTable(h.checkouts, true, true) : '<div class="empty">No checkouts in this period.</div>'}
+        ${h.checkouts.length >= 300 ? '<p class="hint">Showing the latest 300. Search to narrow it down.</p>' : ''}
+      </div>
+    </div>`;
+}
+
+// ---- Details window: features, users and the usage chart
+
+const flmDetailBackdrop = document.getElementById('flm-detail-backdrop');
+
+function openFlexlmDetail(id) {
+  flmDetailId = id;
+  flmDetailBackdrop.classList.remove('hidden');
+  renderFlexlmDetail(true);
+}
+
+function closeFlexlmDetail() {
+  flmDetailBackdrop.classList.add('hidden');
+  flmDetailId = null;
+  if (flmChart) { flmChart.destroy(); flmChart = null; }
+}
+
+function renderFlexlmDetail(full) {
+  const s = flmData && flmData.servers.find(x => x.id === flmDetailId);
+  const el = document.getElementById('flm-detail');
+  if (!s) { closeFlexlmDetail(); return; }
+  const head = `<div class="modal-title-row"><h2 id="flm-detail-title">${escapeHtml(s.name)}</h2>${flmPill(s)}</div>
+    <p class="modal-meta"><span class="mono">${escapeHtml(s.target)}</span>
+      ${s.vendors.length ? ' · vendor daemon' + (s.vendors.length === 1 ? ' ' : 's ') + s.vendors.map(v => `${escapeHtml(v.name)}${v.version ? ' v' + escapeHtml(v.version) : ''}${v.up ? '' : ' <span class="down-text">down</span>'}`).join(', ') : ''}
+      ${s.lmgrdVersion ? ` · lmgrd v${escapeHtml(s.lmgrdVersion)}` : ''}
+      · checked ${s.lastCheck ? fmtAgo(s.lastCheck) : 'never'}${s.lastMs != null ? ` (${s.lastMs} ms)` : ''}</p>
+    ${s.message ? `<p class="${s.status === 'down' ? 'details-error' : 'flm-warn-line'}">${escapeHtml(s.message)}</p>` : ''}
+    ${s.notes ? `<p class="hint">${escapeHtml(s.notes)}</p>` : ''}`;
+  const byFeature = {};
+  s.checkouts.forEach(c => { (byFeature[c.feature] = byFeature[c.feature] || []).push(c); });
+  const features = s.features.length ? `<div class="svc-table-wrap"><table class="svc-table">
+      <thead><tr><th>Feature</th><th>Vendor</th><th class="flm-meter-col">In use</th><th>Expires</th><th>Checked out by</th></tr></thead>
+      <tbody>${s.features.map(f => `<tr>
+        <td><span class="mono">${escapeHtml(f.name)}</span>${f.version ? ` <span class="muted small">v${escapeHtml(f.version)}</span>` : ''}</td>
+        <td class="small">${escapeHtml(f.vendor || '—')}</td>
+        <td class="flm-meter-col">${flmMeter(f.used, f.total, s.fullPct)}${f.reserved ? `<div class="muted small">${f.reserved} reserved</div>` : ''}</td>
+        <td class="nowrap">${flmExpiry(f.expires, s.expiryWarnDays)}</td>
+        <td class="small">${(byFeature[f.name] || []).map(c => `<span class="flm-user" title="since ${escapeHtml(new Date(c.startedAt).toLocaleString())}">${escapeHtml(c.user)}@${escapeHtml(c.host)}${c.licenses > 1 ? ` ×${c.licenses}` : ''}</span>`).join(' ') || '<span class="muted">—</span>'}</td>
+      </tr>`).join('')}</tbody></table></div>`
+    : `<p class="hint">${s.status === 'pending' ? 'Not checked yet: the first check runs within a minute.' : 'No features reported yet.'}</p>`;
+
+  if (!full && el.querySelector('#flm-usage-canvas')) {
+    // Refresh the text parts only; leave the chart alone.
+    el.querySelector('.flm-detail-head').innerHTML = head;
+    el.querySelector('.flm-detail-features').innerHTML = features;
+    return;
+  }
+  el.innerHTML = `<div class="flm-detail-head">${head}</div>
+    <div class="switch-info"><div class="switch-info-header"><h3>Features</h3></div><div class="flm-detail-features">${features}</div></div>
+    <div class="switch-info">
+      <div class="switch-info-header"><h3>Licences in use over time</h3>
+        <div class="seg" role="group" aria-label="Range">${[[1, '24 h'], [7, '7 d'], [30, '30 d'], [90, '90 d'], [365, '1 year']].map(([n, l]) =>
+          `<button type="button" class="group-btn${n === flmUsageDays ? ' active' : ''}" data-flm-udays="${n}">${l}</button>`).join('')}</div></div>
+      <div class="flm-chart-box"><canvas id="flm-usage-canvas"></canvas></div>
+      <p class="muted small" id="flm-usage-note"></p>
+    </div>
+    <details class="switch-info flm-output"><summary>Last lmstat output</summary><pre class="cfg-pre" id="flm-output">Loading…</pre></details>`;
+  el.querySelector('.flm-output').addEventListener('toggle', e => { if (e.target.open) loadFlexlmOutput(s.id); });
+  loadFlexlmUsage(s.id);
+}
+
+async function loadFlexlmOutput(id) {
+  const pre = document.getElementById('flm-output');
+  try {
+    const resp = await api(`api/flexlm.php?id=${id}&output=1`);
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Could not load the output');
+    pre.textContent = d.output ? `Checked ${new Date(d.checkedAt).toLocaleString()}\n\n${d.output}` : 'No output yet.';
+  } catch (err) {
+    pre.textContent = err.message;
+  }
+}
+
+async function loadFlexlmUsage(id) {
+  const days = flmUsageDays;
+  const note = document.getElementById('flm-usage-note');
+  try {
+    const resp = await api(`api/flexlm.php?usage=${id}&days=${days}`);
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.error || 'Could not load the usage');
+    if (flmDetailId !== id || flmUsageDays !== days) return;
+    const c = document.getElementById('flm-usage-canvas');
+    if (!c) return;
+    if (flmChart) flmChart.destroy();
+    // Busiest features first; the chart gets crowded beyond ten.
+    const names = Object.keys(d.features).sort((a, b) => (d.peaks[b] || 0) - (d.peaks[a] || 0)).slice(0, 10);
+    const grid = cssVar('--panel-border');
+    const text = cssVar('--muted');
+    const span = days * 86400;
+    flmChart = new Chart(c, {
+      type: 'line',
+      data: { datasets: names.map((n, i) => ({
+        label: `${n} (of ${d.totals[n]})`, data: d.features[n].map(([x, y]) => ({ x: x / 1000, y })),
+        borderColor: FLM_COLORS[i % FLM_COLORS.length], backgroundColor: FLM_COLORS[i % FLM_COLORS.length],
+        borderWidth: 1.6, pointRadius: d.features[n].length < 3 ? 3 : 0, stepped: true,
+      })) },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        scales: {
+          x: { type: 'linear', min: Date.now() / 1000 - span, max: Date.now() / 1000, grid: { color: grid }, ticks: { color: text, maxTicksLimit: 7, callback: v => {
+            const dt = new Date(v * 1000);
+            return span > 2 * 86400 ? dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) : dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          } } },
+          y: { beginAtZero: true, grid: { color: grid }, ticks: { color: text, precision: 0 } },
+        },
+        plugins: {
+          legend: { position: 'bottom', labels: { color: cssVar('--text'), boxWidth: 10, boxHeight: 10 } },
+          tooltip: { callbacks: { title: items => items.length ? new Date(items[0].raw.x * 1000).toLocaleString() : '' } },
+        },
+      },
+    });
+    const more = Object.keys(d.features).length - names.length;
+    note.textContent = !names.length ? 'No usage recorded in this period yet.'
+      : (d.hourly ? 'Highest number in use in each hour.' : 'Licences in use at each check.')
+        + (more > 0 ? ` Showing the 10 busiest features; ${more} more not shown.` : '');
+  } catch (err) {
+    note.textContent = err.message;
+  }
+}
+
+flmDetailBackdrop.addEventListener('click', e => {
+  if (e.target === flmDetailBackdrop) return closeFlexlmDetail();
+  const b = e.target.closest('[data-flm-udays]');
+  if (b) {
+    flmUsageDays = Number(b.dataset.flmUdays);
+    b.parentElement.querySelectorAll('.group-btn').forEach(x => x.classList.toggle('active', x === b));
+    loadFlexlmUsage(flmDetailId);
+  }
+});
+document.getElementById('flm-detail-close').addEventListener('click', closeFlexlmDetail);
+
+// ---- Actions
+
+async function flmAction(act, id) {
+  const s = flmData.servers.find(x => x.id === id);
+  if (act === 'edit') return openFlexlmForm(s);
+  if (act === 'delete') {
+    if (!confirm(`Delete the licence server "${s.name}"?\n\nIts usage and checkout history go with it. This can't be undone.`)) return;
+  }
+  try {
+    const resp = await api(`api/flexlm.php?id=${id}${act === 'check' ? '&action=check' : ''}`, { method: act === 'delete' ? 'DELETE' : 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Request failed');
+    setFlexlm(data);
+    if (act === 'check') loadFlexlm();   // starts the quick refresh while it waits
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+document.addEventListener('click', e => {
+  const help = e.target.closest('[data-help-link]');
+  if (help) { e.preventDefault(); showView('help', help.dataset.helpLink); return; }
+  const b = e.target.closest('[data-flm-act]');
+  if (b) {
+    e.preventDefault();
+    if (b.dataset.flmAct === 'add') openFlexlmForm(null);
+    else flmAction(b.dataset.flmAct, Number(b.dataset.id));
+    return;
+  }
+  const o = e.target.closest('[data-flm-open]');
+  if (o) { e.preventDefault(); openFlexlmDetail(Number(o.dataset.flmOpen)); return; }
+  const t = e.target.closest('[data-flm-tile]');
+  if (t) { flmTab = t.dataset.flmTile; renderFlexlm(); return; }
+  const hd = e.target.closest('[data-flm-hdays]');
+  if (hd) { flmHistoryDays = Number(hd.dataset.flmHdays); flmHistory = null; renderFlexlmHistory(); }
+});
+
+document.getElementById('flm-add').addEventListener('click', () => openFlexlmForm(null));
+document.querySelectorAll('#flm-tabs .tab-btn').forEach(b => b.addEventListener('click', () => { flmTab = b.dataset.flmTab; renderFlexlm(); }));
+document.getElementById('flm-search').addEventListener('input', e => {
+  flmSearch = e.target.value.trim().toLowerCase();
+  if (flmTab !== 'history') return renderFlexlm();
+  clearTimeout(flmHistoryTimer);
+  flmHistoryTimer = setTimeout(() => renderFlexlmHistory(), 300);
+});
+
+// ---- Add / edit form
+
+const flmBackdrop = document.getElementById('flm-backdrop');
+const flmForm = document.getElementById('flm-form');
+let flmEditing = null;
+
+function closeFlexlmForm() { flmBackdrop.classList.add('hidden'); flmEditing = null; }
+document.getElementById('flm-close').addEventListener('click', closeFlexlmForm);
+flmBackdrop.addEventListener('click', e => { if (e.target === flmBackdrop) closeFlexlmForm(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!flmBackdrop.classList.contains('hidden')) closeFlexlmForm();
+  else if (!flmDetailBackdrop.classList.contains('hidden')) closeFlexlmDetail();
+});
+
+function openFlexlmForm(s) {
+  flmEditing = s || null;
+  const v = (x, d = '') => escapeHtml(String(x ?? d));
+  document.getElementById('flm-form-title').textContent = s ? `Edit ${s.name}` : 'Add licence server';
+  flmForm.innerHTML = `
+    <label>Server (port@host) <input type="text" name="target" required value="${v(s ? s.target : '')}" placeholder="27000@192.168.1.20" /></label>
+    <p class="hint">The port lmgrd listens on and the server's name or address, as in the licence file's SERVER line. For a three-server
+      triad, enter all three separated by commas.</p>
+    <div class="form-grid">
+      <label>Name <input type="text" name="name" maxlength="120" value="${v(s ? s.name : '')}" placeholder="optional, e.g. MATLAB" /></label>
+      <label>Check every <select name="interval">${FLM_INTERVALS.map(([n, l]) => `<option value="${n}"${(s ? s.interval : 300) === n ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+    </div>
+    <div class="form-row">
+      <label class="check"><input type="checkbox" name="alert"${!s || s.alert ? ' checked' : ''} /> Send alerts for this server</label>
+      ${s ? `<label class="check"><input type="checkbox" name="paused"${s.enabled ? '' : ' checked'} /> Paused</label>` : ''}
+    </div>
+    <div class="form-grid">
+      <label>Alert when down for <span class="num-unit"><input type="number" name="downAfterMin" min="0" max="1440" value="${v(s ? s.downAfterMin : 10)}" /> minutes</span></label>
+      <label>Warn when a feature is <span class="num-unit"><input type="number" name="fullPct" min="0" max="100" value="${v(s ? s.fullPct : 100)}" /> % in use</span></label>
+      <label>Warn before licences expire <span class="num-unit"><input type="number" name="expiryWarnDays" min="0" max="365" value="${v(s ? s.expiryWarnDays : 30)}" /> days</span></label>
+    </div>
+    <p class="hint">100% warns only when every licence of a feature is in use. 0 turns that warning off.</p>
+    <label>Notes <input type="text" name="notes" maxlength="500" value="${v(s ? s.notes : '')}" placeholder="optional, e.g. who to contact about renewals" /></label>
+    <div class="form-row"><button type="submit" class="primary-btn">${s ? 'Save' : 'Add licence server'}</button><span class="form-msg" id="flm-msg"></span></div>`;
+  flmBackdrop.classList.remove('hidden');
+  flmForm.querySelector('[name="target"]').focus();
+}
+
+flmForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const get = n => flmForm.querySelector(`[name="${n}"]`);
+  const msg = document.getElementById('flm-msg');
+  const body = {
+    target: get('target').value.trim(), name: get('name').value.trim(), interval: Number(get('interval').value),
+    alert: get('alert').checked, downAfterMin: Number(get('downAfterMin').value) || 0, fullPct: Number(get('fullPct').value) || 0,
+    expiryWarnDays: Number(get('expiryWarnDays').value) || 0, notes: get('notes').value.trim(),
+  };
+  if (flmEditing) body.enabled = !get('paused').checked;
+  msg.className = 'form-msg';
+  msg.textContent = 'Saving…';
+  flmForm.querySelector('[type="submit"]').disabled = true;
+  try {
+    const resp = await api(flmEditing ? `api/flexlm.php?id=${flmEditing.id}` : 'api/flexlm.php',
+      { method: flmEditing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Could not save');
+    setFlexlm(data);
+    closeFlexlmForm();
+    loadFlexlm();
+  } catch (err) {
+    msg.className = 'form-msg err';
+    msg.textContent = err.message;
+  } finally {
+    const btn = flmForm.querySelector('[type="submit"]');
+    if (btn) btn.disabled = false;
+  }
+});
+
+if (location.hash === '#flexlm') showView('flexlm');
+loadFlexlm();
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/assets/help.js")"
 cat > "$APP_DIR/assets/help.js" <<'WEBMON_FILE_EOF'
 // Help tab: shows the guides in docs/ (the same Markdown files that read as the
@@ -8131,9 +8794,10 @@ const HELP_TOPICS = [
   { id: 'alerts-and-services', title: 'Alerts and services', group: 'Use' },
   { id: 'agents-and-updates', title: 'Agents and updates', group: 'Use' },
   { id: 'devices-and-security', title: 'Devices and security', group: 'Use' },
+  { id: 'flexlm', title: 'FlexLM licences', group: 'Use' },
   { id: 'troubleshooting', title: 'Troubleshooting', group: 'Help' },
 ];
-const HELP_VERSION = 1;   // bump with docs changes so browsers fetch them again
+const HELP_VERSION = 3;   // bump with docs changes so browsers fetch them again
 const helpCache = {};
 let helpTopic = 'README';
 let helpReady = false;
@@ -11088,6 +11752,7 @@ function renderAlertSettings(st) {
     ${chk('as-failed', 'Failed services', st.alert_failed_services)}
     ${chk('as-av', 'Antivirus off, out of date, or missing on Windows', st.alert_antivirus)}
     ${chk('as-services', 'Monitored services down, or certificates expiring (Services tab)', st.alert_services)}
+    ${chk('as-flexlm', 'FlexLM licence servers down, licences all in use, or expiring (Licences tab)', st.alert_flexlm)}
     ${chk('as-config', 'Switch configuration changes (found by configuration backups)', st.alert_config_changes)}
     ${chk('as-resolved', 'Also notify when a problem is resolved', st.notify_resolved)}
     <div class="form-row"><button type="submit" class="primary-btn">Save</button><span class="form-msg" id="alert-settings-msg"></span></div>`;
@@ -11103,7 +11768,7 @@ alertSettingsForm.addEventListener('submit', async e => {
       down_after_min: n('as-down'), agent_offline_after_min: n('as-agent'),
       disk_warn_pct: n('as-disk-warn'), disk_crit_pct: n('as-disk-crit'),
       remind_every_hours: n('as-remind'), alert_reboots: b('as-crash'),
-      alert_failed_services: b('as-failed'), alert_antivirus: b('as-av'), alert_services: b('as-services'), notify_resolved: b('as-resolved'), alert_config_changes: b('as-config'),
+      alert_failed_services: b('as-failed'), alert_antivirus: b('as-av'), alert_services: b('as-services'), alert_flexlm: b('as-flexlm'), notify_resolved: b('as-resolved'), alert_config_changes: b('as-config'),
       bw_mbps: n('as-bw'), bw_minutes: n('as-bw-min'), bw_daily_gb: n('as-bw-day'), bw_internal: b('as-bw-int'),
     });
     renderAlertSettings(data.settings);
@@ -13162,9 +13827,12 @@ header .icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentCol
 .modal-title-row .card-icon { width: 34px; height: 34px; vertical-align: middle; display: inline-grid; }
 
 /* ---- Narrow screens ---- */
+/* Eight app-bar sections: the clock and user name make room for them first. */
+@media (max-width: 1440px) {
+  .user-meta, header .header-clock { display: none; }
+}
 @media (max-width: 1280px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .user-meta, header .header-clock { display: none; }
 }
 @media (max-width: 900px) {
   .app-bar-inner { padding: 0 16px; gap: 14px; }
@@ -13452,6 +14120,28 @@ header .icon-btn.active { background: var(--accent-soft); border-color: var(--ac
   .help-search { min-width: 0; width: 100%; }
 }
 .help-content p code, .help-content li code, .help-content td code { overflow-wrap: anywhere; }
+
+/* ---- Licences tab (assets/flexlm.js) ---- */
+.down-text { color: var(--down); }
+.flm-notice { margin-bottom: 14px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--down) 40%, var(--panel-border)); border-radius: var(--radius); background: var(--panel); }
+.flm-notice a { color: var(--accent); }
+.flm-meter-col { min-width: 170px; width: 22%; }
+.flm-meter { display: flex; flex-direction: column; gap: 3px; }
+.flm-meter-label { display: flex; justify-content: space-between; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.flm-range { margin-bottom: 12px; }
+.flm-history { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.flm-top h3 { margin: 0 0 8px; font-size: 1rem; }
+.flm-top-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.flm-top-list li { display: flex; flex-direction: column; }
+.flm-top-name { font-weight: 600; overflow-wrap: anywhere; }
+.flm-user { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 6px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--panel-border); white-space: nowrap; }
+.flm-chart-box { position: relative; height: 280px; }
+.flm-warn-line { color: var(--pending); margin: 4px 0 8px; }
+.flm-output summary { cursor: pointer; font-weight: 600; }
+.flm-output pre { margin-top: 8px; max-height: 360px; }
+@media (max-width: 900px) { .flm-history { grid-template-columns: minmax(0, 1fr); } }
+.flm-link { color: var(--text); text-decoration: none; font-weight: 550; }
+.flm-link:hover { color: var(--accent); text-decoration: underline; }
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/assets/topology.js")"
@@ -13955,8 +14645,9 @@ function showView(name, subnet = '') {
   const security = name === 'security';
   const services = name === 'services';
   const network = name === 'network';
+  const flexlm = name === 'flexlm';
   const help = name === 'help';
-  const other = updates || reports || scans || security || services || network || help;
+  const other = updates || reports || scans || security || services || network || flexlm || help;
   updatesView.classList.toggle('hidden', !updates);
   hostsView.classList.toggle('hidden', other);
   document.getElementById('services-view').classList.toggle('hidden', !services);
@@ -13964,6 +14655,7 @@ function showView(name, subnet = '') {
   document.getElementById('scans-view').classList.toggle('hidden', !scans);
   document.getElementById('security-view').classList.toggle('hidden', !security);
   document.getElementById('network-view').classList.toggle('hidden', !network);
+  document.getElementById('flexlm-view').classList.toggle('hidden', !flexlm);
   document.getElementById('help-view').classList.toggle('hidden', !help);
   document.getElementById('help-btn')?.classList.toggle('active', help);
   if (!other) {
@@ -13988,6 +14680,7 @@ function showView(name, subnet = '') {
   if (typeof securityViewShown === 'function') securityViewShown(security);   // vulns.js
   if (typeof servicesViewShown === 'function') servicesViewShown(services);   // services.js
   if (typeof networkViewShown === 'function') networkViewShown(network);      // network.js
+  if (typeof flexlmViewShown === 'function') flexlmViewShown(flexlm);         // flexlm.js
   if (typeof helpViewShown === 'function') helpViewShown(help, subnet);      // help.js (subnet = topic here)
 }
 
@@ -15036,6 +15729,7 @@ require_once __DIR__ . '/../includes/flows.php';
 require_once __DIR__ . '/../includes/devicescan.php';
 require_once __DIR__ . '/../includes/services.php';
 require_once __DIR__ . '/../includes/netlive.php';
+require_once __DIR__ . '/../includes/flexlm.php';
 
 if (PHP_SAPI !== 'cli') exit(1);
 
@@ -15054,6 +15748,7 @@ if (!empty($r['opened']) || !empty($r['resolved']) || !empty($r['reminders'])) {
 ingest_flows();        // NetFlow minutes from the webmonitor-flow collector
 record_port_traffic(); // switch port rates for the Network tab's history
 run_requested_scans(); // "Scan now" on a device
+flexlm_run_due();       // FlexLM licence servers (Licences tab); lmstat runs in parallel, 20 s at most
 run_config_backups(true);   // "Back up now" requests only; last, since SSH logins can take a while
 WEBMON_FILE_EOF
 
@@ -15550,6 +16245,7 @@ updates through a small agent. Everything runs on your own server.
 - [Alerts and services](alerts-and-services.md): notifications and service checks
 - [Agents and updates](agents-and-updates.md): the agent, installing updates, update windows
 - [Devices and security](devices-and-security.md): device inventory, scans, Home Assistant, vulnerability scans
+- [FlexLM licences](flexlm.md): licence servers, licences in use, who has them, expiry alerts
 - [Troubleshooting](troubleshooting.md)
 WEBMON_FILE_EOF
 
@@ -15650,6 +16346,7 @@ that takes 20 hosts down is one alert, not 20.
 | Switch configuration changed | On |
 | High bandwidth (NetFlow) | 50 Mbit/s for 15 minutes, or 50 GB a day |
 | Internet speed below a minimum | Set on the Network tab |
+| Licence server down, licences all in use, licences expiring | On (thresholds per server on the Licences tab; see [FlexLM licences](flexlm.md)) |
 | Send "resolved" messages | On |
 | Remind about open problems | Off |
 
@@ -15749,6 +16446,196 @@ A full scan of a large network takes a while and adds load on the devices
 scanned. Run it outside busy hours, and only scan networks you're responsible for.
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/docs/flexlm.md")"
+cat > "$APP_DIR/docs/flexlm.md" <<'WEBMON_FILE_EOF'
+# FlexLM licences
+
+The **Licences** tab watches FlexLM (FlexNet Publisher) licence servers: the
+`lmgrd` licence servers that hand out licences for engineering and design
+software. For each server it shows:
+
+- whether the licence server and its vendor daemons are up
+- how many licences of each feature are in use, out of how many
+- when each feature's licences expire
+- who has each licence checked out, on which computer, and since when
+- licence use over time (up to a year), and a history of checkouts with the
+  heaviest users
+
+It can alert when a licence server goes down, when every licence of a feature
+is in use, and before licences expire.
+
+## Install lmutil
+
+WebMonitor reads licence servers with Flexera's `lmutil` tool
+(`lmutil lmstat -a`). lmutil is Flexera's software and WebMonitor can't include
+it, so you copy it to the WebMonitor server once.
+
+**Where to get it:** most software that uses FlexLM ships lmutil with its
+licence server files, often in a folder named `lnx64`, `linux64` or
+`x64_lsb`. Software vendors and Flexera's download site also offer it. Use the
+**64-bit Linux** build. One lmutil works with every vendor's licence servers;
+a recent version (11.16 or newer) is best.
+
+You don't need to install the LSB packages that lmutil sometimes asks for.
+If the LSB loader is missing, WebMonitor starts lmutil through the system's
+normal loader instead.
+
+### Rocky Linux install
+
+Copy lmutil to `/usr/local/bin` and make it executable:
+
+```sh
+sudo install -m 755 lmutil /usr/local/bin/lmutil
+sudo restorecon /usr/local/bin/lmutil
+```
+
+`/opt/flexlm/lmutil` works too. To check it runs:
+
+```sh
+sudo -u apache /usr/local/bin/lmutil lmstat -a -c 27000@192.168.1.20
+```
+
+If it says `required file not found`, that's the missing LSB loader. WebMonitor
+works around it, so the Licences tab will still work. To run it by hand, put
+the loader first:
+
+```sh
+sudo -u apache /lib64/ld-linux-x86-64.so.2 /usr/local/bin/lmutil lmstat -a -c 27000@192.168.1.20
+```
+
+### Docker install
+
+Copy lmutil onto the app's data volume. The container makes it executable when
+it starts:
+
+```sh
+docker compose cp lmutil app:/var/lib/webmonitor/lmutil
+docker compose restart app
+```
+
+It stays there through image upgrades. Or mount it from the host by adding a
+line under the app's `volumes:` in `compose.yaml`:
+
+```yaml
+      - ./lmutil:/opt/flexlm/lmutil:ro
+```
+
+(`chmod 755 lmutil` on the host first.)
+
+### Where WebMonitor looks
+
+WebMonitor uses the first of these that exists and is executable:
+
+| Path | Usual for |
+|---|---|
+| `/usr/local/bin/lmutil` | Rocky Linux install |
+| `/opt/flexlm/lmutil` | Either, or a Docker mount |
+| `/var/lib/webmonitor/lmutil` | Docker (on the data volume) |
+| `/var/lib/webmonitor/flexlm/lmutil` | Either |
+| `/usr/bin/lmutil` | Installed by a package |
+
+If none is found, the Licences tab says so at the top.
+
+## Add a licence server
+
+On the **Licences** tab, press **Add licence server** (admins only) and enter:
+
+| Field | What to enter |
+|---|---|
+| Server | `port@host`, as on the `SERVER` line of the licence file: for example `27000@192.168.1.20` or `27000@licsrv`. `@host` alone tries the default ports 27000 to 27009. For a three-server triad, enter all three separated by commas: `27000@192.168.1.21,27000@192.168.1.22,27000@192.168.1.23`. |
+| Name | Optional. A name people recognise, such as the software it licenses. |
+| Check every | How often to run lmstat. 5 minutes is the default and is enough for most sites. |
+| Alert when down for | How long the server must be down before an alert (10 minutes by default). |
+| Warn when a feature is … % in use | 100 (the default) warns only when every licence of a feature is in use. Use, say, 90 for an earlier warning, or 0 to turn it off. |
+| Warn before licences expire | Days before a feature's expiry date (30 by default; 0 turns it off). |
+| Notes | Optional, e.g. who to contact about renewals. |
+
+The first check runs within a minute. Add one entry per licence server (per
+`lmgrd`). A machine that runs several licence servers on different ports
+needs one entry for each port.
+
+## Reading the tab
+
+**Servers** lists each licence server with its status, licences in use,
+number of users and the next expiry date. Click a server's name for its
+details: every feature with its licences in use, expiry date and who has it,
+a chart of licences in use over time, and the last lmstat output (useful when
+something looks wrong).
+
+| Status | Meaning |
+|---|---|
+| Up | The licence server and its vendor daemons answer |
+| Warning | Up, but a triad member or one of several vendor daemons is down, a feature is full, or licences expire soon. The reason is shown under the server. |
+| Down | Two checks in a row failed: lmgrd didn't answer, or every vendor daemon is down |
+| Unknown | lmutil is missing or can't run on the WebMonitor server |
+| Pending | Not checked yet |
+
+**In use now** lists every licence checked out right now, across all servers.
+Search by user, computer, feature or server.
+
+**History** shows checkouts over the last day to 180 days, with the users who
+had licences checked out the longest. Times come from the checks, so with a
+5-minute interval a checkout's length is accurate to about 5 minutes, and a
+licence used for less than one interval may not appear at all.
+
+The usage chart shows the licences in use at each check for the last 24 hours
+and 7 days, and the highest number in use in each hour for longer periods.
+Hourly peaks are kept for 400 days, which helps when deciding how many
+licences to renew.
+
+**Check now** asks the background job to check the server. It runs within a
+minute, and the page updates when it's done.
+
+## Alerts
+
+Licence alerts go to the same places as every other alert (Settings →
+Notifications). They are on by default; turn them all off with **FlexLM
+licence servers down, licences all in use, or expiring** under **When to
+alert**, or for one server by unticking **Send alerts for this server**.
+
+| Alert | Severity | When |
+|---|---|---|
+| Licence server down | Critical | Down for longer than the server's "Alert when down for" time |
+| Licences in use | Warning | A feature reaches the server's "% in use" level. One alert per feature. |
+| Licence expiry | Warning, then critical once expired | Features expire within the warning period. Features that expire on the same day share one alert. |
+
+Alerts clear by themselves when the problem goes away. Pausing or deleting a
+server closes its alerts without a "resolved" message.
+
+## Troubleshooting
+
+**"Cannot connect to license server system"**: the WebMonitor server can't
+reach lmgrd. Check the port and address, and that the licence server's
+firewall allows the WebMonitor server in. lmstat needs the lmgrd port **and**
+the vendor daemon's port. The vendor daemon port is random unless the licence
+file's `VENDOR` line sets one (`VENDOR mlm port=27010`), so set a fixed port
+if there's a firewall in between.
+
+**It works with an IP address but lmstat hangs or fails to reach the vendor
+daemon**: lmgrd tells lmutil the licence server's own hostname, and the
+WebMonitor server must be able to resolve it. Add the name to DNS, or:
+
+- Rocky Linux install: add a line to `/etc/hosts`, e.g.
+  `192.168.1.20  licsrv`
+- Docker: add it under the app service in `compose.yaml`:
+
+```yaml
+    extra_hosts:
+      - "licsrv:192.168.1.20"
+```
+
+Then `docker compose up -d` to apply it.
+
+**Unknown: "lmutil could not start"**: the message shows lmutil's own error.
+`error while loading shared libraries` names a missing library; install the
+package that provides it with `dnf provides '*/libname.so*'`. A 32-bit lmutil
+needs `dnf install glibc.i686`; it's simpler to use the 64-bit build.
+
+**Usernames or computers look wrong**: open the server's details and look at
+**Last lmstat output**. If the lines under "Users of …" look unusual, send
+that output with a bug report.
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/docs/getting-started.md")"
 cat > "$APP_DIR/docs/getting-started.md" <<'WEBMON_FILE_EOF'
 # Getting started
@@ -15816,6 +16703,7 @@ see everything but can't change settings, run scans or install updates.
 | Live switch traffic map and scheduled internet speed tests | [Network tab](network-tab.md) |
 | Web page, port and DNS checks | [Alerts and services](alerts-and-services.md) |
 | What every device is, deep scans, Home Assistant, vulnerability scans | [Devices and security](devices-and-security.md) |
+| FlexLM licence servers: licences in use, who has them, expiry | [FlexLM licences](flexlm.md) |
 
 ## The tabs
 
@@ -15828,6 +16716,7 @@ see everything but can't change settings, run scans or install updates.
 | **Reports** | Network topology, the device inventory and NetFlow traffic. Each can be exported to CSV or printed. |
 | **Scans** | The device scan queue: what's running and waiting. |
 | **Security** | Vulnerability scan results by severity. |
+| **Licences** | FlexLM licence servers, licences in use, who has them checked out, and expiry dates. |
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/docs/install-docker.md")"
@@ -16445,6 +17334,7 @@ Connections **from the WebMonitor server** to your network:
 | TCP connects to ports 80, 443, 22, 445 and 3389 | Up/down checks and subnet discovery. No ICMP ping is used. |
 | UDP 161 (SNMP v1/v2c, read-only) | Switch ports, MAC tables, server details, NAS health, Wi-Fi clients |
 | TCP 22 (SSH) | Switch and router configuration backups (optional) |
+| TCP to each licence server's lmgrd and vendor daemon ports | FlexLM licence monitoring (optional, see [FlexLM licences](flexlm.md)) |
 | UDP 1900, 5353, 137 | Device scans: UPnP, mDNS/Bonjour, NetBIOS (optional) |
 
 Internet access the server uses (optional):
@@ -16480,6 +17370,7 @@ Nothing is needed for basic up/down checks. To get more:
 | Traffic and per-port flows | NetFlow v5/v9 or IPFIX export (see [NetFlow](netflow.md)) |
 | Wi-Fi clients by access point | Aruba Instant (SNMP) |
 | Device names, rooms and makers | Home Assistant with a long-lived access token (optional) |
+| FlexLM licence usage | Nothing on the licence server. The WebMonitor server needs Flexera's `lmutil` (64-bit Linux build), which you copy in yourself: see [FlexLM licences](flexlm.md) |
 
 ## Browsers
 
@@ -16619,6 +17510,11 @@ all five looks down. Allow one of those ports from the WebMonitor server, add a
 See [NetFlow → Check it's working](netflow.md#check-its-working). Check UDP 2055
 is open, the exporter points at the right address, and with Docker that you're
 using host networking.
+
+## Licence servers show as down
+
+See [FlexLM licences → Troubleshooting](flexlm.md#troubleshooting). The most
+common cause is that `lmutil` isn't installed on the WebMonitor server.
 
 ## Configuration backups fail
 
@@ -16921,6 +17817,7 @@ require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/hostdetails.php';   // NAS checks (nas.php)
 require_once __DIR__ . '/services.php';
 require_once __DIR__ . '/speedtest.php';
+require_once __DIR__ . '/flexlm.php';
 
 /**
  * Alert evaluation, run every minute by cli/cron.php.
@@ -16940,6 +17837,7 @@ const ALERT_DEFAULTS = [
     'alert_failed_services' => true,
     'alert_antivirus' => true,     // antivirus off, out of date, or missing (Windows)
     'alert_services' => true,      // a monitored service is down or its certificate expires soon (Services tab)
+    'alert_flexlm' => true,        // a FlexLM licence server is down, a feature is full or licences expire soon (Licences tab)
     'alert_reboots' => true,       // planned reboots; crashes always alert
     'alert_config_changes' => true, // a switch configuration backup differs from the last one
     'notify_resolved' => true,
@@ -17160,6 +18058,9 @@ function current_problems(array $s, array $hosts, array &$frozenHosts): array {
 
     // --- Internet speed (Network tab): the last two tests slower than the set minimum.
     speedtest_problems($add, $frozenHosts);
+
+    // --- FlexLM licence servers (Licences tab): down, licences all in use, or expiring.
+    if ($s['alert_flexlm']) flexlm_problems($add, $frozenHosts);
     return $problems;
 }
 
@@ -17222,7 +18123,7 @@ function evaluate_alerts(): array {
         $wanted = current_problems($s, $hosts, $frozen);
 
         $open = [];
-        foreach ($pdo->query("SELECT * FROM alerts WHERE resolved_at IS NULL AND type IN ('host_down','agent_offline','disk','failed_services','antivirus','nas_health','bandwidth','service_down','service_cert','speedtest')")->fetchAll() as $a) {
+        foreach ($pdo->query("SELECT * FROM alerts WHERE resolved_at IS NULL AND type IN ('host_down','agent_offline','disk','failed_services','antivirus','nas_health','bandwidth','service_down','service_cert','speedtest','flexlm_down','flexlm_full','flexlm_expiry')")->fetchAll() as $a) {
             $open["{$a['host_id']}|{$a['type']}|{$a['subject']}"] = $a;
         }
 
@@ -17246,6 +18147,10 @@ function evaluate_alerts(): array {
             // No fresh data: don't guess (but muting always closes problems).
             // A service that no longer exists or was paused: close it quietly.
             if (str_starts_with($a['type'], 'service_') && !service_alert_live($a)) {
+                $pdo->prepare('UPDATE alerts SET resolved_at = ?, notified_at = COALESCE(notified_at, ?) WHERE id = ?')->execute([$now, $now, $a['id']]);
+                continue;
+            }
+            if (str_starts_with($a['type'], 'flexlm_') && !flexlm_alert_live($a)) {
                 $pdo->prepare('UPDATE alerts SET resolved_at = ?, notified_at = COALESCE(notified_at, ?) WHERE id = ?')->execute([$now, $now, $a['id']]);
                 continue;
             }
@@ -17329,6 +18234,7 @@ function send_alert_digest(array $changes, array $hosts): int {
 
 /** Short name for an alert's host; devices without a card are named in the alert itself. */
 function alert_host_short(array $hosts, array $a): string {
+    if (str_starts_with((string) $a['type'], 'flexlm_')) return flexlm_alert_name($a);
     if (str_starts_with((string) $a['subject'], 'svc:')) {
         $st = db()->prepare('SELECT name FROM services WHERE id = ?');
         $st->execute([(int) substr($a['subject'], 4)]);
@@ -17365,6 +18271,9 @@ function alert_type_label(string $type): string {
         'service_down' => 'Service down',
         'service_cert' => 'Certificate',
         'speedtest' => 'Internet speed',
+        'flexlm_down' => 'Licence server down',
+        'flexlm_full' => 'Licences in use',
+        'flexlm_expiry' => 'Licence expiry',
     ][$type] ?? $type;
 }
 
@@ -19740,6 +20649,653 @@ function run_subnet_scans(?string $only = null, bool $force = false): array {
         $out[$subnet] = ($result ?? []) + ['removed' => $removed, 'skipped' => $skipped];
     }
     return $out;
+}
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/includes/flexlm.php")"
+cat > "$APP_DIR/includes/flexlm.php" <<'WEBMON_FILE_EOF'
+<?php
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/agents.php';   // now_ms()
+
+/**
+ * FlexLM licence servers (Licences tab).
+ *
+ * cli/cron.php runs flexlm_run_due() every minute. Servers that are due (or
+ * that someone pressed "Check now" on) are checked in parallel with
+ * "lmutil lmstat -a -c port@host". The output gives the license server and
+ * vendor daemon status, each feature's licences issued and in use, expiry
+ * dates and who has each licence checked out.
+ *
+ * lmutil is Flexera's tool and can't be shipped with WebMonitor: copy it to
+ * one of FLEXLM_LMUTIL_PATHS (docs/flexlm.md). Most lmutil builds ask for the
+ * LSB loader (ld-lsb-x86-64.so.3), which Rocky Linux doesn't have; when the
+ * loader is missing, lmutil is started through the normal glibc loader
+ * instead, so no system changes are needed.
+ *
+ * Status: up; warn (a triad member or vendor daemon down, a feature full or
+ * expiring soon); down (two failed checks in a row); unknown (lmutil missing
+ * or not runnable); pending (not checked yet).
+ */
+
+const FLEXLM_LMUTIL_PATHS = [
+    '/usr/local/bin/lmutil',
+    '/opt/flexlm/lmutil',
+    '/var/lib/webmonitor/lmutil',          // the Docker image's data volume
+    '/var/lib/webmonitor/flexlm/lmutil',
+    '/usr/bin/lmutil',
+];
+const FLEXLM_INTERVALS = [60, 120, 300, 600, 900, 1800, 3600];
+const FLEXLM_TIMEOUT_SEC = 20;             // per lmstat run
+const FLEXLM_PARALLEL = 12;
+const FLEXLM_DOWN_AFTER = 2;               // failures in a row before it shows down
+const FLEXLM_USAGE_KEEP_DAYS = 14;
+const FLEXLM_HOURLY_KEEP_DAYS = 400;
+const FLEXLM_CHECKOUTS_KEEP_DAYS = 180;
+const FLEXLM_OUTPUT_MAX = 256 * 1024;
+// port@host, @host (default ports), or a triad of three joined by commas. No file paths.
+const FLEXLM_TARGET_PART_RE = '/^(\d{1,5})?@[A-Za-z0-9][A-Za-z0-9._\-]{0,252}$/';
+
+// ---------------------------------------------------------------- lmutil
+
+/** Path to lmutil, or null when it isn't installed. */
+function flexlm_lmutil_path(): ?string {
+    foreach (FLEXLM_LMUTIL_PATHS as $p) {
+        if (@is_file($p) && @is_executable($p)) return $p;
+    }
+    return null;
+}
+
+/**
+ * The ELF interpreter a binary asks for (e.g. /lib64/ld-lsb-x86-64.so.3) and
+ * its class (32 or 64), or null for a script or unreadable file.
+ */
+function flexlm_elf_interp(string $path): ?array {
+    $f = @fopen($path, 'rb');
+    if (!$f) return null;
+    try {
+        $h = fread($f, 64);
+        if (strlen($h) < 52 || substr($h, 0, 4) !== "\x7fELF" || ord($h[5]) !== 1) return null;   // little-endian only
+        $is64 = ord($h[4]) === 2;
+        if ($is64) {
+            $phoff = unpack('P', substr($h, 0x20, 8))[1];
+            [$phentsize, $phnum] = array_values(unpack('v2', substr($h, 0x36, 4)));
+        } else {
+            $phoff = unpack('V', substr($h, 0x1C, 4))[1];
+            [$phentsize, $phnum] = array_values(unpack('v2', substr($h, 0x2A, 4)));
+        }
+        for ($i = 0; $i < min($phnum, 64); $i++) {
+            fseek($f, $phoff + $i * $phentsize);
+            $ph = fread($f, $phentsize);
+            if (strlen($ph) < ($is64 ? 56 : 32) || unpack('V', substr($ph, 0, 4))[1] !== 3) continue;   // PT_INTERP
+            [$off, $size] = $is64 ? [unpack('P', substr($ph, 8, 8))[1], unpack('P', substr($ph, 32, 8))[1]]
+                                  : [unpack('V', substr($ph, 4, 4))[1], unpack('V', substr($ph, 16, 4))[1]];
+            fseek($f, $off);
+            return ['interp' => rtrim((string) fread($f, min($size, 256)), "\0"), 'bits' => $is64 ? 64 : 32];
+        }
+        return ['interp' => null, 'bits' => $is64 ? 64 : 32];   // static binary
+    } finally {
+        fclose($f);
+    }
+}
+
+/**
+ * The command that starts lmutil: [argv prefix, problem]. Problem is a message
+ * for the Licences tab when lmutil can't run (argv prefix is then null).
+ */
+function flexlm_lmutil_command(): array {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    $path = flexlm_lmutil_path();
+    if ($path === null) return $cached = [null, 'lmutil is not installed on this server. See Help → FlexLM licences.'];
+    $elf = flexlm_elf_interp($path);
+    if ($elf === null) return $cached = [[$path], null];   // a wrapper script: run it as it is
+    if ($elf['interp'] === null || is_file($elf['interp'])) return $cached = [[$path], null];
+    // The LSB loader is missing: use the system's own loader of the same class.
+    $loaders = $elf['bits'] === 64 ? ['/lib64/ld-linux-x86-64.so.2', '/lib/ld-linux-x86-64.so.2', '/lib/ld-linux-aarch64.so.1']
+                                    : ['/lib/ld-linux.so.2'];
+    foreach ($loaders as $l) {
+        if (is_file($l)) return $cached = [[$l, $path], null];
+    }
+    return $cached = [null, $elf['bits'] === 32
+        ? 'lmutil is a 32-bit program and the 32-bit system libraries are not installed (dnf install glibc.i686).'
+        : "lmutil needs {$elf['interp']}, which this system doesn't have."];
+}
+
+/**
+ * Runs "lmutil lmstat -a -c TARGET" for each target, several at once, each
+ * stopped after $timeout seconds. Returns [key => [output, ms, timedOut]].
+ */
+function flexlm_lmstat_many(array $targets, ?array $prefix = null, int $timeout = FLEXLM_TIMEOUT_SEC): array {
+    $prefix = $prefix ?? flexlm_lmutil_command()[0];   // tests pass their own command
+    $out = [];
+    if ($prefix === null) return $out;
+    foreach (array_chunk($targets, FLEXLM_PARALLEL, true) as $batch) {
+        $running = [];
+        foreach ($batch as $key => $target) {
+            $cmd = array_merge($prefix, ['lmstat', '-a', '-c', $target]);
+            $p = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes,
+                           null, ['PATH' => '/usr/bin:/bin', 'LANG' => 'C', 'HOME' => sys_get_temp_dir()]);
+            if (!is_resource($p)) {
+                $out[$key] = ['Could not start lmutil.', 0, false];
+                continue;
+            }
+            stream_set_blocking($pipes[1], false);
+            $running[$key] = ['p' => $p, 'pipe' => $pipes[1], 'buf' => '', 'start' => microtime(true)];
+        }
+        while ($running) {
+            $read = array_column($running, 'pipe');
+            $w = $e = null;
+            @stream_select($read, $w, $e, 0, 200000);
+            foreach ($running as $key => &$r) {
+                $chunk = fread($r['pipe'], 65536);
+                if ($chunk !== false && $chunk !== '' && strlen($r['buf']) < FLEXLM_OUTPUT_MAX) $r['buf'] .= $chunk;
+                $elapsed = microtime(true) - $r['start'];
+                $done = feof($r['pipe']);
+                $timedOut = !$done && $elapsed > $timeout;
+                if ($done || $timedOut) {
+                    if ($timedOut) proc_terminate($r['p'], 9);
+                    fclose($r['pipe']);
+                    proc_close($r['p']);
+                    $out[$key] = [substr($r['buf'], 0, FLEXLM_OUTPUT_MAX), (int) round($elapsed * 1000), $timedOut];
+                    unset($running[$key]);
+                }
+            }
+            unset($r);
+        }
+    }
+    return $out;
+}
+
+// ---------------------------------------------------------------- parsing
+
+/**
+ * Reads lmstat -a output. Returns:
+ *   up        bool: at least one license server answered UP
+ *   message   why it's down, or null
+ *   servers   [[name, up]] license servers (three for a triad)
+ *   lmgrd     lmgrd version, or null
+ *   vendors   [[name, up, version]]
+ *   features  [name => [vendor, version, total, used, reserved, expires (Y-m-d|null)]]
+ *   checkouts [[feature, user, host, display, version, licenses, start]]
+ */
+function flexlm_parse(string $text, ?int $now = null): array {
+    $r = ['up' => false, 'message' => null, 'servers' => [], 'lmgrd' => null, 'vendors' => [], 'features' => [], 'checkouts' => []];
+    $lines = preg_split('/\r?\n/', $text);
+    $feature = null;
+    foreach ($lines as $line) {
+        if (preg_match('/^\s*(\S+): license server (UP|DOWN)\b.*?(?:\bv(\d+[\d.]*))?\s*$/i', $line, $m)) {
+            $up = strtoupper($m[2]) === 'UP';
+            $r['servers'][] = [$m[1], $up];
+            if ($up) { $r['up'] = true; $r['lmgrd'] = $r['lmgrd'] ?? ($m[3] ?? null) ?: null; }
+            continue;
+        }
+        if (preg_match('/^Users of (\S+?):\s+\((.*)\)\s*$/', $line, $m)) {
+            $feature = $m[1];
+            $total = $used = 0;
+            if (preg_match('/Total of (\d+) licen[sc]es? issued;\s*Total of (\d+) licen[sc]es? in use/i', $m[2], $t)) {
+                [$total, $used] = [(int) $t[1], (int) $t[2]];
+            }
+            $r['features'][$feature] = [null, null, $total, $used, 0, null];
+            continue;
+        }
+        if ($feature === null) {
+            // Vendor daemon section: "MLM: UP v11.16.2" or "MLM: The desired vendor daemon is down."
+            if (preg_match('/^\s+([A-Za-z0-9_\-]+): UP\b(?:\s+v(\d+[\d.]*))?/', $line, $m)) {
+                $r['vendors'][] = [$m[1], true, $m[2] ?? null];
+            } elseif (preg_match('/^\s+([A-Za-z0-9_\-]+): (.*vendor daemon is down.*|.*DOWN.*|Cannot .*)$/i', $line, $m)
+                      && stripos($line, 'license server') === false) {
+                $r['vendors'][] = [$m[1], false, null];
+            }
+            if ($r['message'] === null && preg_match('/(Cannot connect to license server[^(]*|lmgrd is not running[^(]*|License server machine is down[^(]*|Cannot find license file[^(]*|Error getting status:[^(]*)/i', $line, $m)) {
+                $r['message'] = rtrim(trim($m[1]), ' .:') . '.';
+            }
+            continue;
+        }
+        // "MATLAB" v41, vendor: MLM, expiry: 31-dec-2026
+        if (preg_match('/^\s+"([^"]+)"\s+v(\S+?),\s+vendor:\s+([^,\s]+)(?:,\s+expiry:\s*(\S+))?/i', $line, $m)) {
+            $f = isset($r['features'][$m[1]]) ? $m[1] : $feature;
+            $r['features'][$f][0] = $m[3];
+            $r['features'][$f][1] = $m[2];
+            $r['features'][$f][5] = flexlm_parse_expiry($m[4] ?? '');
+            continue;
+        }
+        if (preg_match('/^\s+(\d+)\s+RESERVATIONs?\s+for\b/i', $line, $m)) {
+            $r['features'][$feature][4] += (int) $m[1];
+            continue;
+        }
+        // jsmith pc01 pc01 (v41) (licsrv/27000 101), start Wed 11/18 9:15, 2 licenses
+        if (preg_match('/^\s+(\S+)\s+(\S+)\s+(.*?)\s*(?:\(v([^)]*)\)\s+)?\(([^)]*)\),\s+start\s+(\w{3}\s+\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})(?:,\s+(\d+)\s+licen[sc]es?)?/i', $line, $m)) {
+            if (stripos($line, 'queued') !== false) continue;
+            $r['checkouts'][] = [$feature, $m[1], $m[2], $m[3] !== '' ? $m[3] : null, $m[4] !== '' ? $m[4] : null,
+                                 isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 1, preg_replace('/\s+/', ' ', $m[6])];
+        }
+    }
+    if (!$r['up'] && $r['message'] === null) {
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || stripos($line, 'copyright') !== false || stripos($line, 'Flexible License Manager status') !== false
+                || stripos($line, 'License server status') === 0 || stripos($line, 'License file(s)') === 0) continue;
+            $r['message'] = mb_substr($line, 0, 300);
+            break;
+        }
+        $r['message'] = $r['message'] ?? 'No answer from the license server.';
+    }
+    return $r;
+}
+
+/** "31-dec-2026" -> "2026-12-31"; permanent licences (year 0, "permanent") -> null. */
+function flexlm_parse_expiry(string $s): ?string {
+    if (!preg_match('/^(\d{1,2})-([a-z]{3})-(\d{1,4})$/i', trim($s), $m) || (int) $m[3] < 1970 || (int) $m[3] > 9000) return null;
+    $ts = strtotime("{$m[1]} {$m[2]} {$m[3]}");
+    return $ts ? date('Y-m-d', $ts) : null;
+}
+
+/** lmstat's start time ("Wed 11/18 9:15", no year) as ms: this year, or last year if that's in the future. */
+function flexlm_start_ms(string $start, int $nowMs): ?int {
+    if (!preg_match('/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/', $start, $m)) return null;
+    $year = (int) date('Y', intdiv($nowMs, 1000));
+    $ts = mktime((int) $m[3], (int) $m[4], 0, (int) $m[1], (int) $m[2], $year);
+    if ($ts > intdiv($nowMs, 1000) + 86400) $ts = mktime((int) $m[3], (int) $m[4], 0, (int) $m[1], (int) $m[2], $year - 1);
+    return $ts ? $ts * 1000 : null;
+}
+
+// ---------------------------------------------------------------- recording
+
+/** Server status from a parse result: [status, message]. */
+function flexlm_judge(array $srv, array $p, int $nowMs): array {
+    if (!$p['up']) return ['down', $p['message']];
+    $warn = [];
+    $downServers = array_filter($p['servers'], fn($s) => !$s[1]);
+    if ($downServers) $warn[] = 'license server ' . implode(', ', array_column($downServers, 0)) . ' is down';
+    $downVendors = array_filter($p['vendors'], fn($v) => !$v[1]);
+    if ($downVendors && count($downVendors) === count($p['vendors'])) {
+        return ['down', 'Vendor daemon ' . implode(', ', array_column($downVendors, 0)) . ' is down.'];
+    }
+    if ($downVendors) $warn[] = 'vendor daemon ' . implode(', ', array_column($downVendors, 0)) . ' is down';
+    $pct = (int) $srv['full_pct'];
+    $full = [];
+    if ($pct > 0) {
+        foreach ($p['features'] as $name => $f) {
+            if ($f[2] > 0 && $f[3] * 100 >= $f[2] * $pct) $full[] = $name . ($f[3] >= $f[2] ? " (all {$f[2]} in use)" : " ({$f[3]} of {$f[2]} in use)");
+        }
+    }
+    if ($full) $warn[] = implode(', ', array_slice($full, 0, 5)) . (count($full) > 5 ? ' and ' . (count($full) - 5) . ' more' : '');
+    $days = (int) $srv['expiry_warn_days'];
+    if ($days > 0) {
+        $soon = [];
+        $limit = date('Y-m-d', intdiv($nowMs, 1000) + $days * 86400);
+        foreach ($p['features'] as $name => $f) {
+            if ($f[5] !== null && $f[5] <= $limit) $soon[$f[5]][] = $name;
+        }
+        ksort($soon);
+        foreach (array_slice($soon, 0, 2, true) as $date => $names) {
+            $warn[] = (count($names) === 1 ? $names[0] : count($names) . ' features') . ($date < date('Y-m-d', intdiv($nowMs, 1000)) ? ' expired ' : ' expire' . (count($names) === 1 ? 's ' : ' ')) . $date;
+        }
+    }
+    return $warn ? ['warn', ucfirst(implode('; ', $warn)) . '.'] : ['up', null];
+}
+
+/** Stores one check: status, features, usage points and checkouts. */
+function flexlm_record(array $srv, string $output, int $ms, bool $timedOut, ?int $nowMs = null): void {
+    $pdo = db();
+    $now = $nowMs ?? now_ms();
+    $id = (int) $srv['id'];
+    $p = flexlm_parse($output, $now);
+    if ($timedOut && !$p['up']) $p['message'] = 'No answer within ' . FLEXLM_TIMEOUT_SEC . ' seconds.';
+    [$status, $msg] = flexlm_judge($srv, $p, $now);
+    $fails = $status === 'down' ? (int) $srv['fail_count'] + 1 : 0;
+    if ($status === 'down' && $fails < FLEXLM_DOWN_AFTER && !in_array($srv['status'], ['down', 'pending', 'unknown'], true)) {
+        $status = $srv['status'];   // one failure: keep the old status until it's confirmed
+    }
+    $pdo->prepare('UPDATE flexlm_servers SET status = ?, message = ?, last_check_at = ?, last_ms = ?, fail_count = ?, check_requested = 0,
+                   changed_at = IF(status <> ?, ?, COALESCE(changed_at, ?)), last_output = ?,
+                   vendors = COALESCE(?, vendors), lmgrd_version = COALESCE(?, lmgrd_version) WHERE id = ?')
+        ->execute([$status, $msg !== null ? mb_substr($msg, 0, 500) : null, $now, $ms, $fails, $status, $now, $now, $output,
+                   $p['up'] ? json_encode(array_map(fn($v) => ['name' => $v[0], 'up' => $v[1], 'version' => $v[2]], $p['vendors'])) : null,
+                   $p['lmgrd'], $id]);
+    if (!$p['up']) return;   // keep the last known features and checkouts
+
+    $pdo->beginTransaction();
+    try {
+        $names = array_keys($p['features']);
+        if ($names) {
+            $pdo->prepare('DELETE FROM flexlm_features WHERE server_id = ? AND feature NOT IN (' . implode(',', array_fill(0, count($names), '?')) . ')')
+                ->execute(array_merge([$id], array_map('strval', $names)));
+        } else {
+            $pdo->prepare('DELETE FROM flexlm_features WHERE server_id = ?')->execute([$id]);
+        }
+        $feat = $pdo->prepare('INSERT INTO flexlm_features (server_id, feature, vendor, version, total, used, reserved, expires, updated_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE vendor = VALUES(vendor), version = VALUES(version),
+                               total = VALUES(total), used = VALUES(used), reserved = VALUES(reserved), expires = VALUES(expires), updated_at = VALUES(updated_at)');
+        $usage = $pdo->prepare('INSERT IGNORE INTO flexlm_usage (server_id, feature, ts, used, total) VALUES (?, ?, ?, ?, ?)');
+        $hourly = $pdo->prepare('INSERT INTO flexlm_usage_hourly (server_id, feature, hour, peak, total) VALUES (?, ?, ?, ?, ?)
+                                 ON DUPLICATE KEY UPDATE peak = GREATEST(peak, VALUES(peak)), total = GREATEST(total, VALUES(total))');
+        $hour = intdiv($now, 3600000) * 3600000;
+        foreach ($p['features'] as $name => [$vendor, $version, $total, $used, $reserved, $expires]) {
+            $name = (string) $name;
+            $feat->execute([$id, $name, $vendor, $version, $total, $used, $reserved, $expires, $now]);
+            if ($total > 0) {
+                $usage->execute([$id, $name, $now, $used, $total]);
+                $hourly->execute([$id, $name, $hour, $used, $total]);
+            }
+        }
+
+        // Checkouts: carry on the ones seen before, start new ones, end the ones that are gone.
+        $open = [];
+        $st = $pdo->prepare('SELECT id, feature, username, host, start_text FROM flexlm_checkouts WHERE server_id = ? AND ended_at IS NULL');
+        $st->execute([$id]);
+        foreach ($st as $c) $open["{$c['feature']}|{$c['username']}|{$c['host']}|{$c['start_text']}"] = (int) $c['id'];
+        $seen = $pdo->prepare('UPDATE flexlm_checkouts SET last_seen = ?, licenses = ?, display = ?, version = ? WHERE id = ?');
+        $add = $pdo->prepare('INSERT INTO flexlm_checkouts (server_id, feature, username, host, display, version, licenses, start_text, started_at, last_seen)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $done = [];
+        foreach ($p['checkouts'] as [$f, $user, $host, $display, $version, $count, $start]) {
+            $f = (string) $f;
+            $user = mb_substr($user, 0, 120);
+            $host = mb_substr($host, 0, 190);
+            $key = "$f|$user|$host|$start";
+            if (isset($done[$key])) continue;   // the same line twice in one output counts once
+            $done[$key] = true;
+            if (isset($open[$key])) {
+                $seen->execute([$now, $count, $display !== null ? mb_substr($display, 0, 190) : null, $version, $open[$key]]);
+                unset($open[$key]);
+            } else {
+                $started = flexlm_start_ms($start, $now);
+                $add->execute([$id, $f, $user, $host, $display !== null ? mb_substr($display, 0, 190) : null, $version !== null ? mb_substr($version, 0, 40) : null,
+                               $count, $start, $started !== null && $started <= $now ? $started : $now, $now]);
+            }
+        }
+        if ($open) {
+            $pdo->query('UPDATE flexlm_checkouts SET ended_at = last_seen WHERE id IN (' . implode(',', array_map('intval', $open)) . ')');
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/** Marks servers unknown when lmutil can't run (nothing else changes). */
+function flexlm_record_unrunnable(array $servers, string $problem): void {
+    $now = now_ms();
+    $st = db()->prepare("UPDATE flexlm_servers SET status = 'unknown', message = ?, last_check_at = ?, check_requested = 0,
+                         changed_at = IF(status <> 'unknown', ?, changed_at) WHERE id = ?");
+    foreach ($servers as $s) $st->execute([$problem, $now, $now, $s['id']]);
+}
+
+/** Checks the given servers (rows from flexlm_servers) now. */
+function flexlm_check(array $servers): void {
+    if (!$servers) return;
+    [$prefix, $problem] = flexlm_lmutil_command();
+    if ($prefix === null) { flexlm_record_unrunnable($servers, $problem); return; }
+    $targets = [];
+    foreach ($servers as $s) $targets[(int) $s['id']] = $s['target'];
+    $results = flexlm_lmstat_many($targets);
+    foreach ($servers as $s) {
+        [$out, $ms, $timedOut] = $results[(int) $s['id']] ?? ['', 0, false];
+        // The loader or lmutil itself failed to start (missing libraries).
+        if (preg_match('/(error while loading shared libraries|required file not found|cannot execute binary file|Exec format error)/i', $out)) {
+            flexlm_record_unrunnable([$s], 'lmutil could not start: ' . mb_substr(trim(strtok($out, "\n")), 0, 300));
+            continue;
+        }
+        flexlm_record($s, $out, $ms, $timedOut);
+    }
+}
+
+/** Cron: checks the servers that are due or were asked for, and trims old data. One process at a time. */
+function flexlm_run_due(): void {
+    $pdo = db();
+    if (!(int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'flexlm_servers'")->fetchColumn()) return;
+    if (!(int) $pdo->query("SELECT GET_LOCK('webmonitor_flexlm', 0)")->fetchColumn()) return;
+    try {
+        $now = now_ms();
+        // 5 s of slack so a 60 s check run by a once-a-minute timer isn't skipped every other run.
+        $st = $pdo->prepare('SELECT * FROM flexlm_servers WHERE enabled = 1
+                             AND (check_requested = 1 OR last_check_at IS NULL OR last_check_at + interval_sec * 1000 - 5000 <= ?)');
+        $st->execute([$now]);
+        flexlm_check($st->fetchAll());
+        if (random_int(1, 30) === 1) {
+            $pdo->prepare('DELETE FROM flexlm_usage WHERE ts < ?')->execute([$now - FLEXLM_USAGE_KEEP_DAYS * 86400000]);
+            $pdo->prepare('DELETE FROM flexlm_usage_hourly WHERE hour < ?')->execute([$now - FLEXLM_HOURLY_KEEP_DAYS * 86400000]);
+            $pdo->prepare('DELETE FROM flexlm_checkouts WHERE ended_at IS NOT NULL AND ended_at < ?')->execute([$now - FLEXLM_CHECKOUTS_KEEP_DAYS * 86400000]);
+        }
+    } finally {
+        $pdo->query("SELECT RELEASE_LOCK('webmonitor_flexlm')");
+    }
+}
+
+// ---------------------------------------------------------------- validation
+
+/** Cleans a create/update request. Returns [row, error]. */
+function flexlm_validate(array $in, ?array $existing = null): array {
+    $get = fn($k, $col, $d = null) => array_key_exists($k, $in) ? $in[$k] : ($existing[$col] ?? $d);
+    $target = preg_replace('/\s+/', '', (string) $get('target', 'target', ''));
+    $parts = $target === '' ? [] : explode(',', $target);
+    if (!$parts || count($parts) > 3) return [null, 'Enter the server as port@host, e.g. 27000@192.168.1.20 (or three of them, comma-separated, for a triad).'];
+    foreach ($parts as $part) {
+        if (!preg_match(FLEXLM_TARGET_PART_RE, $part, $m) || (isset($m[1]) && $m[1] !== '' && ((int) $m[1] < 1 || (int) $m[1] > 65535))) {
+            return [null, "\"$part\" isn't port@host. Use e.g. 27000@192.168.1.20 or 27000@licsrv."];
+        }
+    }
+    $name = trim((string) $get('name', 'name', ''));
+    if ($name === '') $name = $target;
+    $interval = (int) $get('interval', 'interval_sec', 300);
+    if (!in_array($interval, FLEXLM_INTERVALS, true)) $interval = 300;
+    $notes = trim((string) $get('notes', 'notes', ''));
+    return [[
+        'name' => mb_substr($name, 0, 120),
+        'target' => $target,
+        'interval_sec' => $interval,
+        'enabled' => (bool) $get('enabled', 'enabled', true),
+        'alert' => (bool) $get('alert', 'alert', true),
+        'down_after_min' => max(0, min(1440, (int) $get('downAfterMin', 'down_after_min', 10))),
+        'full_pct' => max(0, min(100, (int) $get('fullPct', 'full_pct', 100))),
+        'expiry_warn_days' => max(0, min(365, (int) $get('expiryWarnDays', 'expiry_warn_days', 30))),
+        'notes' => $notes !== '' ? mb_substr($notes, 0, 500) : null,
+    ], null];
+}
+
+// ---------------------------------------------------------------- reading
+
+/** JSON-ready server row with its features and current checkouts. */
+function flexlm_server_row(array $s, array $features, array $checkouts): array {
+    $used = $total = 0;
+    foreach ($features as $f) { $used += $f['used']; $total += $f['total']; }
+    $expiries = array_filter(array_column($features, 'expires'));
+    return [
+        'id' => (int) $s['id'],
+        'name' => $s['name'],
+        'target' => $s['target'],
+        'interval' => (int) $s['interval_sec'],
+        'enabled' => (bool) $s['enabled'],
+        'alert' => (bool) $s['alert'],
+        'downAfterMin' => (int) $s['down_after_min'],
+        'fullPct' => (int) $s['full_pct'],
+        'expiryWarnDays' => (int) $s['expiry_warn_days'],
+        'notes' => $s['notes'],
+        'status' => $s['enabled'] ? $s['status'] : 'paused',
+        'message' => $s['message'],
+        'vendors' => $s['vendors'] ? (json_decode($s['vendors'], true) ?: []) : [],
+        'lmgrdVersion' => $s['lmgrd_version'],
+        'lastCheck' => $s['last_check_at'] !== null ? (int) $s['last_check_at'] : null,
+        'lastMs' => $s['last_ms'] !== null ? (int) $s['last_ms'] : null,
+        'changedAt' => $s['changed_at'] !== null ? (int) $s['changed_at'] : null,
+        'checkRequested' => (bool) $s['check_requested'],
+        'used' => $used,
+        'total' => $total,
+        'earliestExpiry' => $expiries ? min($expiries) : null,
+        'features' => $features,
+        'checkouts' => $checkouts,
+    ];
+}
+
+/** Every server with its features and open checkouts. */
+function flexlm_list(): array {
+    $pdo = db();
+    $servers = $pdo->query('SELECT id, name, target, interval_sec, enabled, alert, down_after_min, full_pct, expiry_warn_days, notes, status, message,
+                            vendors, lmgrd_version, last_check_at, last_ms, changed_at, check_requested FROM flexlm_servers ORDER BY name')->fetchAll();
+    $features = $checkouts = [];
+    foreach ($pdo->query('SELECT * FROM flexlm_features ORDER BY feature') as $f) {
+        $features[(int) $f['server_id']][] = [
+            'name' => $f['feature'], 'vendor' => $f['vendor'], 'version' => $f['version'], 'total' => (int) $f['total'],
+            'used' => (int) $f['used'], 'reserved' => (int) $f['reserved'], 'expires' => $f['expires'],
+        ];
+    }
+    foreach ($pdo->query('SELECT * FROM flexlm_checkouts WHERE ended_at IS NULL ORDER BY started_at') as $c) {
+        $checkouts[(int) $c['server_id']][] = flexlm_checkout_row($c);
+    }
+    return array_map(fn($s) => flexlm_server_row($s, $features[(int) $s['id']] ?? [], $checkouts[(int) $s['id']] ?? []), $servers);
+}
+
+function flexlm_checkout_row(array $c): array {
+    return [
+        'id' => (int) $c['id'],
+        'serverId' => (int) $c['server_id'],
+        'serverName' => $c['server_name'] ?? null,
+        'feature' => $c['feature'],
+        'user' => $c['username'],
+        'host' => $c['host'],
+        'display' => $c['display'],
+        'version' => $c['version'],
+        'licenses' => (int) $c['licenses'],
+        'startedAt' => (int) $c['started_at'],
+        'lastSeen' => (int) $c['last_seen'],
+        'endedAt' => $c['ended_at'] !== null ? (int) $c['ended_at'] : null,
+    ];
+}
+
+/** Checkout history and the heaviest users over the last $days days, filtered by user, host or feature. */
+function flexlm_history(int $days, string $q = '', ?int $serverId = null): array {
+    $pdo = db();
+    $since = now_ms() - $days * 86400000;
+    $where = 'c.last_seen >= ?';
+    $args = [$since];
+    if ($serverId) { $where .= ' AND c.server_id = ?'; $args[] = $serverId; }
+    if ($q !== '') {
+        $where .= ' AND (c.username LIKE ? OR c.host LIKE ? OR c.feature LIKE ?)';
+        $like = '%' . addcslashes($q, '%_\\') . '%';
+        array_push($args, $like, $like, $like);
+    }
+    $st = $pdo->prepare("SELECT c.*, s.name AS server_name FROM flexlm_checkouts c JOIN flexlm_servers s ON s.id = c.server_id
+                         WHERE $where ORDER BY c.last_seen DESC, c.id DESC LIMIT 300");
+    $st->execute($args);
+    $rows = array_map('flexlm_checkout_row', $st->fetchAll());
+    $st = $pdo->prepare("SELECT c.username, COUNT(*) AS sessions, COUNT(DISTINCT c.feature) AS features,
+                                SUM(GREATEST(c.last_seen - GREATEST(c.started_at, ?), 0)) AS ms, MAX(c.last_seen) AS last_seen
+                         FROM flexlm_checkouts c WHERE $where GROUP BY c.username ORDER BY ms DESC LIMIT 15");
+    $st->execute(array_merge([$since], $args));
+    $top = array_map(fn($r) => ['user' => $r['username'], 'sessions' => (int) $r['sessions'], 'features' => (int) $r['features'],
+                                'hours' => round((int) $r['ms'] / 3600000, 1), 'lastSeen' => (int) $r['last_seen']], $st->fetchAll());
+    return ['days' => $days, 'checkouts' => $rows, 'topUsers' => $top];
+}
+
+/**
+ * Licences in use per feature for one server: every check for up to 7 days,
+ * hourly peaks beyond that. Returns {features: {name: [[ts, used]...]}, totals: {name: total}}.
+ */
+function flexlm_usage_series(int $serverId, int $days): array {
+    $pdo = db();
+    $since = now_ms() - $days * 86400000;
+    if ($days <= 7) {
+        $st = $pdo->prepare('SELECT feature, ts, used, total FROM flexlm_usage WHERE server_id = ? AND ts >= ? ORDER BY ts');
+    } else {
+        $st = $pdo->prepare('SELECT feature, hour AS ts, peak AS used, total FROM flexlm_usage_hourly WHERE server_id = ? AND hour >= ? ORDER BY hour');
+    }
+    $st->execute([$serverId, $since]);
+    $series = $totals = [];
+    foreach ($st as $r) {
+        $series[$r['feature']][] = [(int) $r['ts'], (int) $r['used']];
+        $totals[$r['feature']] = max($totals[$r['feature']] ?? 0, (int) $r['total']);
+    }
+    // Peak per feature over the range, for the table under the chart.
+    $peaks = [];
+    foreach ($series as $f => $pts) $peaks[$f] = max(array_column($pts, 1));
+    return ['days' => $days, 'hourly' => $days > 7, 'features' => $series, 'totals' => $totals, 'peaks' => $peaks];
+}
+
+// ---------------------------------------------------------------- alerts
+
+/**
+ * Problems for includes/alerts.php: server down for down_after_min minutes
+ * (critical), a feature at or above full_pct % in use (warning), features
+ * expiring within expiry_warn_days (one alert per server and date; critical
+ * once expired). Subjects start with "flm:ID"; alerts have no host.
+ */
+function flexlm_problems(callable $add, array &$frozenHosts): void {
+    $pdo = db();
+    if (!(int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'flexlm_servers'")->fetchColumn()) return;
+    $now = now_ms();
+    $today = date('Y-m-d', intdiv($now, 1000));
+    $openSubjects = [];
+    foreach ($pdo->query("SELECT type, subject FROM alerts WHERE resolved_at IS NULL AND type LIKE 'flexlm\\_%'") as $a) {
+        $openSubjects[(int) explode(':', substr($a['subject'], 4))[0]][] = $a['type'] . '|' . $a['subject'];
+    }
+    $features = [];
+    foreach ($pdo->query('SELECT server_id, feature, total, used, expires FROM flexlm_features') as $f) $features[(int) $f['server_id']][] = $f;
+
+    foreach ($pdo->query('SELECT * FROM flexlm_servers WHERE enabled = 1 AND alert = 1') as $s) {
+        $id = (int) $s['id'];
+        $label = "{$s['name']} ({$s['target']})";
+        $stale = $s['last_check_at'] === null || $now - (int) $s['last_check_at'] > max(3 * (int) $s['interval_sec'], 900) * 1000;
+        $freeze = function (?string $onlyType = null) use ($id, $openSubjects, &$frozenHosts) {
+            foreach ($openSubjects[$id] ?? [] as $key) {
+                if ($onlyType === null || str_starts_with($key, $onlyType . '|')) $frozenHosts[0][$key] = true;
+            }
+        };
+        if ($stale || in_array($s['status'], ['unknown', 'pending'], true)) { $freeze(); continue; }   // no fresh data: leave as is
+
+        if ($s['status'] === 'down') {
+            $downMs = $now - (int) ($s['changed_at'] ?? $now);
+            if ($downMs >= (int) $s['down_after_min'] * 60000) {
+                $add(null, 'flexlm_down', "flm:$id", 'critical', "Licence server $label is down since " . date('H:i', intdiv((int) $s['changed_at'], 1000)) . ': ' . ($s['message'] ?? ''));
+            } else {
+                $freeze('flexlm_down');   // not down long enough yet: don't resolve an open one either
+            }
+            // Features are from before it went down: keep full/expiry alerts as they are.
+            $freeze('flexlm_full');
+            $freeze('flexlm_expiry');
+            continue;
+        }
+
+        $pct = (int) $s['full_pct'];
+        $byDate = [];
+        foreach ($features[$id] ?? [] as $f) {
+            $total = (int) $f['total'];
+            $used = (int) $f['used'];
+            if ($pct > 0 && $total > 0 && $used * 100 >= $total * $pct) {
+                $add(null, 'flexlm_full', "flm:$id:{$f['feature']}", 'warning', $used >= $total
+                    ? "{$s['name']}: all $total {$f['feature']} licences are in use"
+                    : "{$s['name']}: $used of $total {$f['feature']} licences are in use (" . round($used * 100 / $total) . '%)');
+            }
+            if ((int) $s['expiry_warn_days'] > 0 && $f['expires'] !== null
+                && $f['expires'] <= date('Y-m-d', intdiv($now, 1000) + (int) $s['expiry_warn_days'] * 86400)) {
+                $byDate[$f['expires']][] = $f['feature'];
+            }
+        }
+        foreach ($byDate as $date => $names) {
+            $days = (int) round((strtotime($date) - strtotime($today)) / 86400);
+            $list = implode(', ', array_slice($names, 0, 8)) . (count($names) > 8 ? ' and ' . (count($names) - 8) . ' more' : '');
+            $what = count($names) === 1 ? "the $list licence" : count($names) . " licences ($list)";
+            $add(null, 'flexlm_expiry', "flm:$id:$date", $days < 0 ? 'critical' : 'warning', $days < 0
+                ? "{$s['name']}: $what expired on $date"
+                : "{$s['name']}: $what expire" . (count($names) === 1 ? 's' : '') . ($days === 0 ? ' today' : " in $days day" . ($days === 1 ? '' : 's')) . ", on $date");
+        }
+    }
+}
+
+/** Whether a FlexLM alert's server still exists with alerts on (else it's closed without a "resolved" message). */
+function flexlm_alert_live(array $a): bool {
+    $st = db()->prepare('SELECT 1 FROM flexlm_servers WHERE id = ? AND enabled = 1 AND alert = 1');
+    $st->execute([(int) explode(':', substr((string) $a['subject'], 4))[0]]);
+    return (bool) $st->fetchColumn();
+}
+
+/** Name of the server a FlexLM alert is about. */
+function flexlm_alert_name(array $a): string {
+    $st = db()->prepare('SELECT name FROM flexlm_servers WHERE id = ?');
+    $st->execute([(int) explode(':', substr((string) $a['subject'], 4))[0]]);
+    return $st->fetchColumn() ?: 'licence server';
 }
 WEBMON_FILE_EOF
 
@@ -25768,6 +27324,97 @@ CREATE TABLE IF NOT EXISTS flow_iface_conv (
 ALTER TABLE flow_conv ADD INDEX IF NOT EXISTS idx_remote_ts (remote_ip, ts);
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/migrations/029_flexlm.sql")"
+cat > "$APP_DIR/migrations/029_flexlm.sql" <<'WEBMON_FILE_EOF'
+-- FlexLM licence servers (Licences tab). Each row is one lmgrd, checked from
+-- this server with "lmutil lmstat -a -c port@host".
+CREATE TABLE IF NOT EXISTS flexlm_servers (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  target VARCHAR(500) NOT NULL,            -- port@host, or a triad: port@a,port@b,port@c
+  interval_sec INT UNSIGNED NOT NULL DEFAULT 300,
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  alert TINYINT(1) NOT NULL DEFAULT 1,     -- alert when it's down, full or expiring
+  down_after_min INT UNSIGNED NOT NULL DEFAULT 10,   -- down this long before an alert
+  full_pct TINYINT UNSIGNED NOT NULL DEFAULT 100,    -- warn when a feature is this % in use (0 = off)
+  expiry_warn_days INT UNSIGNED NOT NULL DEFAULT 30, -- warn this many days before a feature expires (0 = off)
+  notes VARCHAR(500) NULL,                 -- e.g. who to call about renewals
+  status VARCHAR(8) NOT NULL DEFAULT 'pending',      -- up, warn, down, pending
+  message VARCHAR(500) NULL,
+  vendors VARCHAR(500) NULL,               -- JSON: [{name, up, version}]
+  lmgrd_version VARCHAR(40) NULL,
+  last_check_at BIGINT UNSIGNED NULL,
+  last_ms INT UNSIGNED NULL,
+  fail_count INT UNSIGNED NOT NULL DEFAULT 0,
+  changed_at BIGINT UNSIGNED NULL,         -- when status last changed
+  check_requested TINYINT(1) NOT NULL DEFAULT 0,     -- "Check now": cron runs it within a minute
+  last_output MEDIUMTEXT NULL,             -- the last lmstat output, for troubleshooting
+  created_by INT UNSIGNED NULL,
+  created_at BIGINT UNSIGNED NOT NULL,
+  KEY due_idx (enabled, last_check_at)
+) ENGINE=InnoDB;
+
+-- Features as of the last successful check.
+CREATE TABLE IF NOT EXISTS flexlm_features (
+  server_id INT UNSIGNED NOT NULL,
+  feature VARCHAR(120) NOT NULL,
+  vendor VARCHAR(60) NULL,
+  version VARCHAR(40) NULL,
+  total INT UNSIGNED NOT NULL DEFAULT 0,
+  used INT UNSIGNED NOT NULL DEFAULT 0,
+  reserved INT UNSIGNED NOT NULL DEFAULT 0,
+  expires DATE NULL,                       -- NULL = permanent or not shown
+  updated_at BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (server_id, feature),
+  CONSTRAINT flexlm_features_server FOREIGN KEY (server_id) REFERENCES flexlm_servers (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Licences in use at each check (kept 14 days) ...
+CREATE TABLE IF NOT EXISTS flexlm_usage (
+  server_id INT UNSIGNED NOT NULL,
+  feature VARCHAR(120) NOT NULL,
+  ts BIGINT UNSIGNED NOT NULL,
+  used INT UNSIGNED NOT NULL,
+  total INT UNSIGNED NOT NULL,
+  PRIMARY KEY (server_id, feature, ts),
+  KEY ts_idx (ts),
+  CONSTRAINT flexlm_usage_server FOREIGN KEY (server_id) REFERENCES flexlm_servers (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ... and the peak per hour (kept 400 days), for renewal planning.
+CREATE TABLE IF NOT EXISTS flexlm_usage_hourly (
+  server_id INT UNSIGNED NOT NULL,
+  feature VARCHAR(120) NOT NULL,
+  hour BIGINT UNSIGNED NOT NULL,           -- ms, start of the hour
+  peak INT UNSIGNED NOT NULL,
+  total INT UNSIGNED NOT NULL,
+  PRIMARY KEY (server_id, feature, hour),
+  KEY hour_idx (hour),
+  CONSTRAINT flexlm_usage_hourly_server FOREIGN KEY (server_id) REFERENCES flexlm_servers (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Checkouts: one row per user/host/feature session, from the first check that
+-- saw it until the last (ended_at NULL = still checked out). Kept 180 days.
+CREATE TABLE IF NOT EXISTS flexlm_checkouts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  server_id INT UNSIGNED NOT NULL,
+  feature VARCHAR(120) NOT NULL,
+  username VARCHAR(120) NOT NULL,
+  host VARCHAR(190) NOT NULL,
+  display VARCHAR(190) NULL,
+  version VARCHAR(40) NULL,
+  licenses INT UNSIGNED NOT NULL DEFAULT 1,
+  start_text VARCHAR(40) NOT NULL,         -- lmstat's own start time ("Mon 11/18 9:15"), part of the identity
+  started_at BIGINT UNSIGNED NOT NULL,     -- best guess from start_text, else first seen
+  last_seen BIGINT UNSIGNED NOT NULL,
+  ended_at BIGINT UNSIGNED NULL,
+  KEY open_idx (server_id, ended_at),
+  KEY user_idx (username),
+  KEY started_idx (started_at),
+  CONSTRAINT flexlm_checkouts_server FOREIGN KEY (server_id) REFERENCES flexlm_servers (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+WEBMON_FILE_EOF
+
 sed -i "s/__WEBMON_DB_PASS__/${DB_PASS}/" "$APP_DIR/config.php"
 
 # Files from older versions that must not linger (index.html would bypass
@@ -25795,6 +27442,15 @@ if command -v semanage >/dev/null 2>&1; then
 fi
 
 setsebool -P httpd_can_network_connect_db 1 2>/dev/null || true
+
+# FlexLM (Licences tab): lmutil is Flexera's and isn't shipped with WebMonitor (see docs/flexlm.md).
+# If it has been copied in, make sure the background job (user apache) can run it.
+for lmutil in /usr/local/bin/lmutil /opt/flexlm/lmutil; do
+    if [ -f "$lmutil" ]; then
+        chmod 755 "$lmutil"
+        restorecon "$lmutil" 2>/dev/null || true
+    fi
+done
 
 cat > /etc/httpd/conf.d/webmonitor.conf <<EOF
 <Directory "${APP_DIR}">

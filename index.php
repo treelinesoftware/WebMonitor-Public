@@ -17,7 +17,7 @@ $user = require_login_page();
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=55" />
+<link rel="stylesheet" href="assets/style.css?v=56" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -36,6 +36,7 @@ $user = require_login_page();
       <button class="view-btn nav-btn" data-view="reports" type="button">Reports</button>
       <button class="view-btn nav-btn" data-view="scans" type="button">Scans</button>
       <button class="view-btn nav-btn" data-view="security" type="button">Security <span class="tab-count" id="count-security"></span></button>
+      <button class="view-btn nav-btn" data-view="flexlm" type="button">Licences <span class="tab-count" id="count-flexlm"></span></button>
     </nav>
     <div class="app-bar-right">
       <button type="button" class="scan-pill no-print" id="scan-pill" title="Open the scan queue">Scans · checking…</button>
@@ -139,6 +140,34 @@ $user = require_login_page();
     </div>
 
     <div class="net-switch panel-box hidden" id="net-switch"></div>
+  </section>
+
+  <section id="flexlm-view" class="hidden">
+    <div class="report-head">
+      <div><h2 class="report-title">Licences</h2><div class="muted small" id="flm-summary-line">FlexLM licence servers</div></div>
+      <div class="section-actions no-print">
+        <button type="button" class="primary-btn admin-only" id="flm-add">Add licence server</button>
+      </div>
+    </div>
+    <div id="flm-notice"></div>
+    <div class="svc-tiles" id="flm-tiles"></div>
+    <div class="host-toolbar">
+      <div class="segmented" role="group" aria-label="Show" id="flm-tabs">
+        <button class="tab-btn active" data-flm-tab="servers" type="button">Servers</button>
+        <button class="tab-btn" data-flm-tab="inuse" type="button">In use now <span class="tab-count" id="flm-count-inuse"></span></button>
+        <button class="tab-btn" data-flm-tab="history" type="button">History</button>
+      </div>
+      <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="flm-search" placeholder="Search server, feature, user, computer…" autocomplete="off" aria-label="Search licences" /></label>
+    </div>
+    <div id="flm-body"></div>
+    <details class="no-print sec-about"><summary>How licence monitoring works</summary>
+      <p class="hint">WebMonitor runs <code>lmutil lmstat -a</code> against each licence server on its schedule (every 5 minutes by default).
+        It records whether the licence server and its vendor daemons are up, how many licences of each feature are in use, when
+        they expire and who has them checked out. A server shows down after two failed checks in a row.</p>
+      <p class="hint">lmutil comes from Flexera and isn't included with WebMonitor. If the page says it's missing, see
+        <a href="#help=flexlm" data-help-link="flexlm">Help → FlexLM licences</a> for where to put it.</p>
+    </details>
   </section>
 
   <section id="help-view" class="hidden">
@@ -483,6 +512,21 @@ $user = require_login_page();
   </div>
 </div>
 
+<div id="flm-backdrop" class="modal-backdrop hidden">
+  <div class="modal svc-modal" role="dialog" aria-labelledby="flm-form-title">
+    <button id="flm-close" class="modal-close" aria-label="Close">&times;</button>
+    <h2 id="flm-form-title">Add licence server</h2>
+    <form id="flm-form" class="settings-form" autocomplete="off"></form>
+  </div>
+</div>
+
+<div id="flm-detail-backdrop" class="modal-backdrop hidden">
+  <div class="modal modal-wide" role="dialog" aria-labelledby="flm-detail-title">
+    <button id="flm-detail-close" class="modal-close" aria-label="Close">&times;</button>
+    <div id="flm-detail"></div>
+  </div>
+</div>
+
 <div id="netspeed-backdrop" class="modal-backdrop hidden">
   <div class="modal svc-modal" role="dialog" aria-labelledby="netspeed-title">
     <button id="netspeed-close" class="modal-close" aria-label="Close">&times;</button>
@@ -563,12 +607,12 @@ $user = require_login_page();
   </div>
 </div>
 
-<script src="assets/app.js?v=51"></script>
+<script src="assets/app.js?v=52"></script>
 <script src="assets/topology.js?v=45"></script>
 <script src="assets/nas.js?v=45"></script>
 <script src="assets/history.js?v=45"></script>
-<script src="assets/settings.js?v=50"></script>
-<script src="assets/updates.js?v=52"></script>
+<script src="assets/settings.js?v=51"></script>
+<script src="assets/updates.js?v=53"></script>
 <script src="assets/configbackup.js?v=45"></script>
 <script src="assets/portmap.js?v=45"></script>
 <script src="assets/reports.js?v=45"></script>
@@ -579,6 +623,7 @@ $user = require_login_page();
 <script src="assets/vulns.js?v=2"></script>
 <script src="assets/services.js?v=1"></script>
 <script src="assets/network.js?v=3"></script>
-<script src="assets/help.js?v=1"></script>
+<script src="assets/flexlm.js?v=1"></script>
+<script src="assets/help.js?v=3"></script>
 </body>
 </html>

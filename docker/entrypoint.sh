@@ -89,6 +89,12 @@ if [ ! -s "$CERT" ] || [ ! -s "$KEY" ]; then
     log "Created a self-signed certificate for: ${SAN}"
 fi
 
+# ---- FlexLM ----
+# lmutil copied onto the volume (docs/flexlm.md) arrives owned by root and often not executable.
+if [ -f "$STATE/lmutil" ]; then
+    chmod 755 "$STATE/lmutil" 2>/dev/null || log "Note: ${STATE}/lmutil is not executable; run chmod 755 on it."
+fi
+
 # ---- Apache ----
 cp /etc/httpd/conf/httpd.conf.orig /etc/httpd/conf/httpd.conf
 cp /etc/httpd/conf.d/ssl.conf.orig /etc/httpd/conf.d/ssl.conf

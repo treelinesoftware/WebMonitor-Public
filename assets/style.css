@@ -1695,9 +1695,12 @@ header .icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentCol
 .modal-title-row .card-icon { width: 34px; height: 34px; vertical-align: middle; display: inline-grid; }
 
 /* ---- Narrow screens ---- */
+/* Eight app-bar sections: the clock and user name make room for them first. */
+@media (max-width: 1440px) {
+  .user-meta, header .header-clock { display: none; }
+}
 @media (max-width: 1280px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .user-meta, header .header-clock { display: none; }
 }
 @media (max-width: 900px) {
   .app-bar-inner { padding: 0 16px; gap: 14px; }
@@ -1985,3 +1988,25 @@ header .icon-btn.active { background: var(--accent-soft); border-color: var(--ac
   .help-search { min-width: 0; width: 100%; }
 }
 .help-content p code, .help-content li code, .help-content td code { overflow-wrap: anywhere; }
+
+/* ---- Licences tab (assets/flexlm.js) ---- */
+.down-text { color: var(--down); }
+.flm-notice { margin-bottom: 14px; padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--down) 40%, var(--panel-border)); border-radius: var(--radius); background: var(--panel); }
+.flm-notice a { color: var(--accent); }
+.flm-meter-col { min-width: 170px; width: 22%; }
+.flm-meter { display: flex; flex-direction: column; gap: 3px; }
+.flm-meter-label { display: flex; justify-content: space-between; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.flm-range { margin-bottom: 12px; }
+.flm-history { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.flm-top h3 { margin: 0 0 8px; font-size: 1rem; }
+.flm-top-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.flm-top-list li { display: flex; flex-direction: column; }
+.flm-top-name { font-weight: 600; overflow-wrap: anywhere; }
+.flm-user { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 6px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--panel-border); white-space: nowrap; }
+.flm-chart-box { position: relative; height: 280px; }
+.flm-warn-line { color: var(--pending); margin: 4px 0 8px; }
+.flm-output summary { cursor: pointer; font-weight: 600; }
+.flm-output pre { margin-top: 8px; max-height: 360px; }
+@media (max-width: 900px) { .flm-history { grid-template-columns: minmax(0, 1fr); } }
+.flm-link { color: var(--text); text-decoration: none; font-weight: 550; }
+.flm-link:hover { color: var(--accent); text-decoration: underline; }

@@ -26,7 +26,12 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/scheduler.sh \
     && find /var/www/html/webmonitor -type d -exec chmod 755 {} + \
     && find /var/www/html/webmonitor -type f -exec chmod 644 {} +
 
-# Switch SSH keys, NetFlow minute files and the TLS certificate (keep it: agents pin it).
+# FlexLM (Licences tab): lmutil is Flexera's and can't be included here. Copy it to
+# /var/lib/webmonitor/lmutil on the volume, or mount it at /opt/flexlm/lmutil (docs/flexlm.md).
+# The LSB loader it asks for is not needed: WebMonitor starts it through glibc's loader.
+RUN mkdir -p /opt/flexlm
+
+# Switch SSH keys, NetFlow minute files, the TLS certificate (keep it: agents pin it) and lmutil.
 VOLUME /var/lib/webmonitor
 
 ENV WEBMON_HTTPS_PORT=8443 \

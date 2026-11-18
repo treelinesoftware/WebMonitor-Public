@@ -1417,6 +1417,7 @@ function renderAlertsBar() {
       if (li.dataset.host && hostsById.has(+li.dataset.host)) openModal(+li.dataset.host);
       else if ((li.dataset.type || '').startsWith('service_')) showView('services');
       else if (li.dataset.type === 'speedtest') showView('network');   // network.js
+      else if ((li.dataset.type || '').startsWith('flexlm_')) showView('flexlm');   // flexlm.js
       else { showView('reports'); showReport('traffic'); }   // a device without a card: see its traffic
     };
     li.addEventListener('click', open);

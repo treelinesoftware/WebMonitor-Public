@@ -44,8 +44,9 @@ function showView(name, subnet = '') {
   const security = name === 'security';
   const services = name === 'services';
   const network = name === 'network';
+  const flexlm = name === 'flexlm';
   const help = name === 'help';
-  const other = updates || reports || scans || security || services || network || help;
+  const other = updates || reports || scans || security || services || network || flexlm || help;
   updatesView.classList.toggle('hidden', !updates);
   hostsView.classList.toggle('hidden', other);
   document.getElementById('services-view').classList.toggle('hidden', !services);
@@ -53,6 +54,7 @@ function showView(name, subnet = '') {
   document.getElementById('scans-view').classList.toggle('hidden', !scans);
   document.getElementById('security-view').classList.toggle('hidden', !security);
   document.getElementById('network-view').classList.toggle('hidden', !network);
+  document.getElementById('flexlm-view').classList.toggle('hidden', !flexlm);
   document.getElementById('help-view').classList.toggle('hidden', !help);
   document.getElementById('help-btn')?.classList.toggle('active', help);
   if (!other) {
@@ -77,6 +79,7 @@ function showView(name, subnet = '') {
   if (typeof securityViewShown === 'function') securityViewShown(security);   // vulns.js
   if (typeof servicesViewShown === 'function') servicesViewShown(services);   // services.js
   if (typeof networkViewShown === 'function') networkViewShown(network);      // network.js
+  if (typeof flexlmViewShown === 'function') flexlmViewShown(flexlm);         // flexlm.js
   if (typeof helpViewShown === 'function') helpViewShown(help, subnet);      // help.js (subnet = topic here)
 }
 

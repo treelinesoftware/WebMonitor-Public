@@ -30,6 +30,7 @@ that takes 20 hosts down is one alert, not 20.
 | Switch configuration changed | On |
 | High bandwidth (NetFlow) | 50 Mbit/s for 15 minutes, or 50 GB a day |
 | Internet speed below a minimum | Set on the Network tab |
+| Licence server down, licences all in use, licences expiring | On (thresholds per server on the Licences tab; see [FlexLM licences](flexlm.md)) |
 | Send "resolved" messages | On |
 | Remind about open problems | Off |
 

@@ -14,6 +14,7 @@ require_once __DIR__ . '/../includes/flows.php';
 require_once __DIR__ . '/../includes/devicescan.php';
 require_once __DIR__ . '/../includes/services.php';
 require_once __DIR__ . '/../includes/netlive.php';
+require_once __DIR__ . '/../includes/flexlm.php';
 
 if (PHP_SAPI !== 'cli') exit(1);
 
@@ -32,4 +33,5 @@ if (!empty($r['opened']) || !empty($r['resolved']) || !empty($r['reminders'])) {
 ingest_flows();        // NetFlow minutes from the webmonitor-flow collector
 record_port_traffic(); // switch port rates for the Network tab's history
 run_requested_scans(); // "Scan now" on a device
+flexlm_run_due();       // FlexLM licence servers (Licences tab); lmstat runs in parallel, 20 s at most
 run_config_backups(true);   // "Back up now" requests only; last, since SSH logins can take a while

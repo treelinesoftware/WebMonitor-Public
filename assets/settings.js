@@ -408,6 +408,7 @@ function renderAlertSettings(st) {
     ${chk('as-failed', 'Failed services', st.alert_failed_services)}
     ${chk('as-av', 'Antivirus off, out of date, or missing on Windows', st.alert_antivirus)}
     ${chk('as-services', 'Monitored services down, or certificates expiring (Services tab)', st.alert_services)}
+    ${chk('as-flexlm', 'FlexLM licence servers down, licences all in use, or expiring (Licences tab)', st.alert_flexlm)}
     ${chk('as-config', 'Switch configuration changes (found by configuration backups)', st.alert_config_changes)}
     ${chk('as-resolved', 'Also notify when a problem is resolved', st.notify_resolved)}
     <div class="form-row"><button type="submit" class="primary-btn">Save</button><span class="form-msg" id="alert-settings-msg"></span></div>`;
@@ -423,7 +424,7 @@ alertSettingsForm.addEventListener('submit', async e => {
       down_after_min: n('as-down'), agent_offline_after_min: n('as-agent'),
       disk_warn_pct: n('as-disk-warn'), disk_crit_pct: n('as-disk-crit'),
       remind_every_hours: n('as-remind'), alert_reboots: b('as-crash'),
-      alert_failed_services: b('as-failed'), alert_antivirus: b('as-av'), alert_services: b('as-services'), notify_resolved: b('as-resolved'), alert_config_changes: b('as-config'),
+      alert_failed_services: b('as-failed'), alert_antivirus: b('as-av'), alert_services: b('as-services'), alert_flexlm: b('as-flexlm'), notify_resolved: b('as-resolved'), alert_config_changes: b('as-config'),
       bw_mbps: n('as-bw'), bw_minutes: n('as-bw-min'), bw_daily_gb: n('as-bw-day'), bw_internal: b('as-bw-int'),
     });
     renderAlertSettings(data.settings);

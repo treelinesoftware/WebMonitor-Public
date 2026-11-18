@@ -63,6 +63,7 @@ see everything but can't change settings, run scans or install updates.
 | Live switch traffic map and scheduled internet speed tests | [Network tab](network-tab.md) |
 | Web page, port and DNS checks | [Alerts and services](alerts-and-services.md) |
 | What every device is, deep scans, Home Assistant, vulnerability scans | [Devices and security](devices-and-security.md) |
+| FlexLM licence servers: licences in use, who has them, expiry | [FlexLM licences](flexlm.md) |
 
 ## The tabs
 
@@ -75,3 +76,4 @@ see everything but can't change settings, run scans or install updates.
 | **Reports** | Network topology, the device inventory and NetFlow traffic. Each can be exported to CSV or printed. |
 | **Scans** | The device scan queue: what's running and waiting. |
 | **Security** | Vulnerability scan results by severity. |
+| **Licences** | FlexLM licence servers, licences in use, who has them checked out, and expiry dates. |

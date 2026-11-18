@@ -45,6 +45,7 @@ Connections **from the WebMonitor server** to your network:
 | TCP connects to ports 80, 443, 22, 445 and 3389 | Up/down checks and subnet discovery. No ICMP ping is used. |
 | UDP 161 (SNMP v1/v2c, read-only) | Switch ports, MAC tables, server details, NAS health, Wi-Fi clients |
 | TCP 22 (SSH) | Switch and router configuration backups (optional) |
+| TCP to each licence server's lmgrd and vendor daemon ports | FlexLM licence monitoring (optional, see [FlexLM licences](flexlm.md)) |
 | UDP 1900, 5353, 137 | Device scans: UPnP, mDNS/Bonjour, NetBIOS (optional) |
 
 Internet access the server uses (optional):
@@ -80,6 +81,7 @@ Nothing is needed for basic up/down checks. To get more:
 | Traffic and per-port flows | NetFlow v5/v9 or IPFIX export (see [NetFlow](netflow.md)) |
 | Wi-Fi clients by access point | Aruba Instant (SNMP) |
 | Device names, rooms and makers | Home Assistant with a long-lived access token (optional) |
+| FlexLM licence usage | Nothing on the licence server. The WebMonitor server needs Flexera's `lmutil` (64-bit Linux build), which you copy in yourself: see [FlexLM licences](flexlm.md) |
 
 ## Browsers
 

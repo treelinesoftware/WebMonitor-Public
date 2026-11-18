@@ -5,6 +5,7 @@ require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/hostdetails.php';   // NAS checks (nas.php)
 require_once __DIR__ . '/services.php';
 require_once __DIR__ . '/speedtest.php';
+require_once __DIR__ . '/flexlm.php';
 
 /**
  * Alert evaluation, run every minute by cli/cron.php.
@@ -24,6 +25,7 @@ const ALERT_DEFAULTS = [
     'alert_failed_services' => true,
     'alert_antivirus' => true,     // antivirus off, out of date, or missing (Windows)
     'alert_services' => true,      // a monitored service is down or its certificate expires soon (Services tab)
+    'alert_flexlm' => true,        // a FlexLM licence server is down, a feature is full or licences expire soon (Licences tab)
     'alert_reboots' => true,       // planned reboots; crashes always alert
     'alert_config_changes' => true, // a switch configuration backup differs from the last one
     'notify_resolved' => true,
@@ -244,6 +246,9 @@ function current_problems(array $s, array $hosts, array &$frozenHosts): array {
 
     // --- Internet speed (Network tab): the last two tests slower than the set minimum.
     speedtest_problems($add, $frozenHosts);
+
+    // --- FlexLM licence servers (Licences tab): down, licences all in use, or expiring.
+    if ($s['alert_flexlm']) flexlm_problems($add, $frozenHosts);
     return $problems;
 }
 
@@ -306,7 +311,7 @@ function evaluate_alerts(): array {
         $wanted = current_problems($s, $hosts, $frozen);
 
         $open = [];
-        foreach ($pdo->query("SELECT * FROM alerts WHERE resolved_at IS NULL AND type IN ('host_down','agent_offline','disk','failed_services','antivirus','nas_health','bandwidth','service_down','service_cert','speedtest')")->fetchAll() as $a) {
+        foreach ($pdo->query("SELECT * FROM alerts WHERE resolved_at IS NULL AND type IN ('host_down','agent_offline','disk','failed_services','antivirus','nas_health','bandwidth','service_down','service_cert','speedtest','flexlm_down','flexlm_full','flexlm_expiry')")->fetchAll() as $a) {
             $open["{$a['host_id']}|{$a['type']}|{$a['subject']}"] = $a;
         }
 
@@ -330,6 +335,10 @@ function evaluate_alerts(): array {
             // No fresh data: don't guess (but muting always closes problems).
             // A service that no longer exists or was paused: close it quietly.
             if (str_starts_with($a['type'], 'service_') && !service_alert_live($a)) {
+                $pdo->prepare('UPDATE alerts SET resolved_at = ?, notified_at = COALESCE(notified_at, ?) WHERE id = ?')->execute([$now, $now, $a['id']]);
+                continue;
+            }
+            if (str_starts_with($a['type'], 'flexlm_') && !flexlm_alert_live($a)) {
                 $pdo->prepare('UPDATE alerts SET resolved_at = ?, notified_at = COALESCE(notified_at, ?) WHERE id = ?')->execute([$now, $now, $a['id']]);
                 continue;
             }
@@ -413,6 +422,7 @@ function send_alert_digest(array $changes, array $hosts): int {
 
 /** Short name for an alert's host; devices without a card are named in the alert itself. */
 function alert_host_short(array $hosts, array $a): string {
+    if (str_starts_with((string) $a['type'], 'flexlm_')) return flexlm_alert_name($a);
     if (str_starts_with((string) $a['subject'], 'svc:')) {
         $st = db()->prepare('SELECT name FROM services WHERE id = ?');
         $st->execute([(int) substr($a['subject'], 4)]);
@@ -449,6 +459,9 @@ function alert_type_label(string $type): string {
         'service_down' => 'Service down',
         'service_cert' => 'Certificate',
         'speedtest' => 'Internet speed',
+        'flexlm_down' => 'Licence server down',
+        'flexlm_full' => 'Licences in use',
+        'flexlm_expiry' => 'Licence expiry',
     ][$type] ?? $type;
 }
 

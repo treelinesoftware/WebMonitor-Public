@@ -19,9 +19,13 @@ dashboard (the **?** button at the top right).
 - Service monitoring: web pages (status, keyword, response time, certificate
   expiry), TCP ports and DNS lookups checked from the server with no agent, plus
   systemd units and Windows services watched by the agent, with a Restart button.
+- FlexLM licence servers: whether each licence server and vendor daemon is up,
+  licences in use per feature, expiry dates, who has each licence checked out,
+  checkout history and usage over time (needs Flexera's `lmutil`, which you
+  supply).
 - Alerts for hosts going down, agents going offline, disks filling, failed
-  services, monitored services going down, crashes, reboots, bandwidth and slow
-  internet. Sent by email (SMTP), ntfy or webhooks (Discord, Slack or any JSON
+  services, monitored services going down, crashes, reboots, bandwidth, slow
+  internet, and licence servers that are down, full or about to expire. Sent by email (SMTP), ntfy or webhooks (Discord, Slack or any JSON
   endpoint), as one digest per run.
 
 **Network**
@@ -138,7 +142,7 @@ command with an enrollment token and the server's certificate pin.
 
 | Job | When | What |
 |---|---|---|
-| `cli/cron.php` | every minute | host checks, alerts, requested scans and backups, schedules, flows, switch port traffic |
+| `cli/cron.php` | every minute | host checks, alerts, requested scans and backups, schedules, flows, switch port traffic, FlexLM licence servers |
 | `cli/poll-snmp.php` | every 5 minutes | SNMP polling, subnet discovery, port and Wi-Fi maps, DHCP leases, Home Assistant sync, daily device scans, auto-naming |
 | `cli/vulnscan.php` | every minute | starts queued vulnerability scans |
 | `cli/speedtest.php --if-due` | every minute | runs an internet speed test when one is due or was asked for |
@@ -165,6 +169,7 @@ Tests that need no server:
 ```sh
 php deploy/test-device-identity.php
 php deploy/test-homeassistant.php
+php deploy/test-flexlm.php
 node deploy/test-scans.js
 python3 deploy/test-upgrade.py
 ```

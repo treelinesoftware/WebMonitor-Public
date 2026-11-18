@@ -47,6 +47,11 @@ See [NetFlow → Check it's working](netflow.md#check-its-working). Check UDP 20
 is open, the exporter points at the right address, and with Docker that you're
 using host networking.
 
+## Licence servers show as down
+
+See [FlexLM licences → Troubleshooting](flexlm.md#troubleshooting). The most
+common cause is that `lmutil` isn't installed on the WebMonitor server.
+
 ## Configuration backups fail
 
 - `Host key verification failed`: the device's key changed. Use **Forget host
