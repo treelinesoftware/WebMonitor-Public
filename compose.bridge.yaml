@@ -1,0 +1,67 @@
+# WebMonitor on Docker's own network: for Docker Desktop (Mac/Windows) and for
+# trying it out or testing on a workstation.
+#
+#   cp .env.example .env      # then set WEBMON_DB_PASSWORD
+#   docker compose -f compose.bridge.yaml up -d --build
+#
+# Everything works except what needs to see the host's network directly:
+# MAC addresses (device makers) come only from switches and DHCP leases, not
+# the server's ARP table, and mDNS/UPnP discovery of devices doesn't reach
+# the LAN. NetFlow works if the exporter's address isn't rewritten on the way
+# in (it is with Docker Desktop and rootless Podman). On a Linux server, use
+# compose.yaml instead.
+name: webmonitor-bridge
+
+services:
+  db:
+    image: docker.io/library/mariadb:10.11
+    restart: unless-stopped
+    command:
+      - --innodb-buffer-pool-size=${WEBMON_DB_BUFFER_POOL:-512M}
+    environment:
+      MARIADB_DATABASE: webmonitor
+      MARIADB_USER: webmonitor
+      MARIADB_PASSWORD: ${WEBMON_DB_PASSWORD:?Set WEBMON_DB_PASSWORD in .env (see .env.example)}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: webmonitor:latest
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+    # Same port inside and out, so redirects and agent install commands carry the right one.
+    ports:
+      - "${WEBMON_HTTPS_PORT:-8443}:${WEBMON_HTTPS_PORT:-8443}"
+      - "${WEBMON_HTTP_PORT:-8080}:${WEBMON_HTTP_PORT:-8080}"
+      - "${WEBMON_FLOW_PORT:-2055}:2055/udp"
+    environment:
+      WEBMON_DB_HOST: db
+      WEBMON_DB_PORT: 3306
+      WEBMON_DB_PASSWORD: ${WEBMON_DB_PASSWORD}
+      WEBMON_HTTPS_PORT: ${WEBMON_HTTPS_PORT:-8443}
+      WEBMON_HTTP_PORT: ${WEBMON_HTTP_PORT:-8080}
+      WEBMON_FLOW_PORT: 2055
+      WEBMON_FLOW_EXPORTERS: ${WEBMON_FLOW_EXPORTERS:-}
+      WEBMON_HOSTNAME: ${WEBMON_HOSTNAME:-}
+      WEBMON_ADMIN_PASSWORD: ${WEBMON_ADMIN_PASSWORD:-}
+      WEBMON_ACCESS_LOG: ${WEBMON_ACCESS_LOG:-0}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - state:/var/lib/webmonitor
+
+volumes:
+  db:
+  state:

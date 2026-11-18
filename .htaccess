@@ -1,0 +1,20 @@
+<FilesMatch "^(config\.php|config\.example\.php)$">
+    Require all denied
+</FilesMatch>
+
+# Serve WebMonitor over HTTPS only (logins and session cookies must not
+# travel in plain text). Scoped to this directory; other sites on the
+# server are unaffected. 302 rather than 301 so browsers don't cache it.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=302,L]
+</IfModule>
+
+# Make browsers revalidate app files on each load so updates show up
+# immediately (cheap 304s when nothing changed).
+<IfModule mod_headers.c>
+    <FilesMatch "\.(html|css|js|php)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>

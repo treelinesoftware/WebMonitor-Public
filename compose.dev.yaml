@@ -1,0 +1,12 @@
+# Development add-on: serves the app straight from this checkout, so edits show
+# up on the next page load (background jobs pick them up on their next run).
+# Use it on top of either compose file:
+#
+#   docker compose -f compose.bridge.yaml -f compose.dev.yaml up -d --build
+#
+# The checkout is mounted read-only; the container's own config lives in
+# /etc/webmonitor, so the checkout's config.php (if any) is not used.
+services:
+  app:
+    volumes:
+      - ./:/var/www/html/webmonitor:ro,z

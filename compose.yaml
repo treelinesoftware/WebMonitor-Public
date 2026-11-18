@@ -1,0 +1,64 @@
+# WebMonitor with Docker Compose (Linux host, recommended).
+#
+#   cp .env.example .env      # then set WEBMON_DB_PASSWORD
+#   docker compose up -d --build
+#   docker compose logs app   # the first admin password is shown here
+#
+# Both containers use the host's network. WebMonitor needs that to see the
+# network the way a bare-metal install does: MAC addresses from the ARP table,
+# NetFlow arriving from each switch's own address, and mDNS/UPnP discovery.
+# For Docker Desktop (Mac/Windows) or a quick local test, use compose.bridge.yaml.
+name: webmonitor
+
+services:
+  db:
+    image: docker.io/library/mariadb:10.11
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --port=${WEBMON_DB_PORT:-3307}
+      - --bind-address=127.0.0.1
+      - --innodb-buffer-pool-size=${WEBMON_DB_BUFFER_POOL:-512M}
+    environment:
+      MARIADB_DATABASE: webmonitor
+      MARIADB_USER: webmonitor
+      MARIADB_PASSWORD: ${WEBMON_DB_PASSWORD:?Set WEBMON_DB_PASSWORD in .env (see .env.example)}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: webmonitor:latest
+    restart: unless-stopped
+    network_mode: host
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WEBMON_DB_HOST: 127.0.0.1
+      WEBMON_DB_PORT: ${WEBMON_DB_PORT:-3307}
+      WEBMON_DB_PASSWORD: ${WEBMON_DB_PASSWORD}
+      WEBMON_HTTPS_PORT: ${WEBMON_HTTPS_PORT:-8443}
+      WEBMON_HTTP_PORT: ${WEBMON_HTTP_PORT:-8080}
+      WEBMON_FLOW_PORT: ${WEBMON_FLOW_PORT:-2055}
+      WEBMON_FLOW_EXPORTERS: ${WEBMON_FLOW_EXPORTERS:-}
+      WEBMON_HOSTNAME: ${WEBMON_HOSTNAME:-}
+      WEBMON_ADMIN_PASSWORD: ${WEBMON_ADMIN_PASSWORD:-}
+      WEBMON_ACCESS_LOG: ${WEBMON_ACCESS_LOG:-0}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - state:/var/lib/webmonitor
+
+volumes:
+  db:
+  state:

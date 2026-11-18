@@ -1,0 +1,11 @@
+.git
+.gitignore
+.claude
+.env
+.env.*
+config.php
+**/__pycache__
+*.code-workspace
+compose*.yaml
+deploy
+README.md
