@@ -71,10 +71,10 @@ if ($method === 'POST' && !$id) {
     } catch (InvalidArgumentException $e) {
         fail(400, $e->getMessage());
     }
-    $pdo->prepare('INSERT INTO update_schedules (name, enabled, job_type, params, days, at_time, targets, host_ids, created_by, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    $pdo->prepare('INSERT INTO update_schedules (name, enabled, job_type, params, days, at_time, targets, host_ids, group_ids, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([$f['name'], $f['enabled'], $f['job_type'], $f['params'], $f['days'], $f['at_time'],
-                   $f['targets'], $f['host_ids'], $me['id'], now_ms()]);
+                   $f['targets'], $f['host_ids'], $f['group_ids'], $me['id'], now_ms()]);
     $newId = (int) $pdo->lastInsertId();
     skip_past_occurrence($newId);
     http_response_code(201);
@@ -88,7 +88,7 @@ $sched = $stmt->fetch();
 if (!$sched) fail(404, 'Schedule not found.');
 
 if ($method === 'POST' && !empty($_GET['run'])) {
-    echo json_encode(run_schedule($sched, true));
+    echo json_encode(run_schedule($sched, true, null, $me));
     exit;
 }
 
@@ -98,15 +98,15 @@ if ($method === 'PATCH') {
         $f = schedule_fields(array_merge([
             'name' => $current['name'], 'jobType' => $current['jobType'], 'params' => $current['params'],
             'days' => $current['days'], 'atTime' => $current['atTime'], 'targets' => $current['targets'],
-            'hostIds' => $current['hostIds'], 'enabled' => $current['enabled'],
+            'hostIds' => $current['hostIds'], 'groupIds' => $current['groupIds'], 'enabled' => $current['enabled'],
         ], $input));
     } catch (InvalidArgumentException $e) {
         fail(400, $e->getMessage());
     }
     $pdo->prepare('UPDATE update_schedules SET name = ?, enabled = ?, job_type = ?, params = ?, days = ?, at_time = ?,
-                   targets = ?, host_ids = ? WHERE id = ?')
+                   targets = ?, host_ids = ?, group_ids = ? WHERE id = ?')
         ->execute([$f['name'], $f['enabled'], $f['job_type'], $f['params'], $f['days'], $f['at_time'],
-                   $f['targets'], $f['host_ids'], $id]);
+                   $f['targets'], $f['host_ids'], $f['group_ids'], $id]);
     skip_past_occurrence($id);
     echo json_encode(['ok' => true]);
     exit;

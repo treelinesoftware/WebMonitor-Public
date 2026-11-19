@@ -123,9 +123,11 @@ function host_summaries(array $hosts): array {
     $wifi = wireless_summaries();
     $scanned = device_card_summaries();
     $services = service_card_summaries();
-    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services) {
+    $groups = host_group_map();
+    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services, $groups) {
         $id = (int) $host['id'];
         return summarize_host($host, $historyById[$id]) + [
+            'groupIds' => $groups[$id] ?? [],                   // card groups (Settings -> Groups)
             'agent' => $agents[$id] ?? null,
             'nas' => $nas[$id] ?? null,                          // NAS health (SNMP) for the card
             'parent' => $topo['parents'][$id] ?? null,          // the Proxmox host this VM/LXC runs on

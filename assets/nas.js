@@ -91,6 +91,10 @@ function renderHostEditor(host) {
           <option value="">— none —</option>
           ${Object.entries(locationNames).map(([id, n]) => `<option value="${id}" ${Number(id) === host.locationId ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')}
         </select> ${IS_ADMIN ? '<span class="muted small">(manage in Settings → Locations)</span>' : ''}</label>
+      <div><div class="field-label">Groups ${IS_ADMIN ? '<span class="muted small">(manage in Settings → Groups)</span>' : ''}</div>
+        <div class="choice-group" id="he-groups">${Object.keys(groupNames).length ? Object.entries(groupNames).map(([id, n]) =>
+          `<label><input type="checkbox" value="${id}" ${(host.groupIds || []).includes(Number(id)) ? 'checked' : ''} /> ${escapeHtml(n)}</label>`).join('')
+          : '<span class="muted small">No groups yet.</span>'}</div></div>
       <label class="check"><input type="checkbox" id="he-bw-exempt" ${host.bwExempt ? 'checked' : ''} />
         Expected high traffic — no bandwidth alerts for this host (e.g. a download or backup server)</label>
       <p class="hint">Set the device type to <strong>NAS</strong> for QNAP storage: WebMonitor then reads its volumes,
@@ -113,6 +117,8 @@ function renderHostEditor(host) {
     }
     const loc = document.getElementById('he-location').value;
     if ((loc === '' ? null : Number(loc)) !== (host.locationId ?? null)) changes.locationId = loc === '' ? null : Number(loc);
+    const groupIds = [...document.querySelectorAll('#he-groups input:checked')].map(cb => Number(cb.value)).sort((a, b) => a - b);
+    if (groupIds.join() !== [...(host.groupIds || [])].sort((a, b) => a - b).join()) changes.groupIds = groupIds;
     const bw = document.getElementById('he-bw-exempt').checked;
     if (bw !== !!host.bwExempt) changes.bwExempt = bw;
     const msg = document.getElementById('he-msg');

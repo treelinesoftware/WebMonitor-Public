@@ -36,7 +36,15 @@ for 3 minutes raises an alert (adjustable under **Settings → Notifications**).
 
 Click a card for its details: device info, history graphs, SNMP server details,
 switch ports, Wi-Fi clients and configuration backups, depending on the device.
-**Edit** changes its name, type, OS, location and SNMP community.
+**Edit** changes its name, type, OS, location, group and SNMP community.
+
+To organise cards your own way, add groups under **Settings → Groups** (for
+example Servers, Cameras, Office PCs), then tick them in each card's **Edit**;
+a card can be in several groups.
+Choosing **Group** in the Group switch above the cards shows them by group. On the same Settings tab,
+a **screen** is a named set of groups: pick it from **Screen** above the cards to
+see only those groups, or open `?screen=N` (the link is shown next to each
+screen) on a wall display to start on it.
 
 ## 4. Turn on SNMP on your switches and servers
 

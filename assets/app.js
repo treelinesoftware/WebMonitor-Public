@@ -114,6 +114,10 @@ let subnetNames = {};
 try { subnetNames = JSON.parse(document.querySelector('meta[name="subnet-names"]')?.content || '{}'); } catch (e) { /* none */ }
 let locationNames = {};   // id -> name (Settings -> Locations)
 try { locationNames = JSON.parse(document.querySelector('meta[name="locations"]')?.content || '{}'); } catch (e) { /* none */ }
+let groupNames = {};      // id -> name (Settings -> Groups)
+try { groupNames = JSON.parse(document.querySelector('meta[name="card-groups"]')?.content || '{}'); } catch (e) { /* none */ }
+let screens = [];         // [{id, name, groupIds}] (Settings -> Groups -> Screens)
+try { screens = JSON.parse(document.querySelector('meta[name="screens"]')?.content || '[]'); } catch (e) { /* none */ }
 let subnetGateways = {};
 try { subnetGateways = JSON.parse(document.querySelector('meta[name="subnet-gateways"]')?.content || '{}'); } catch (e) { /* none */ }
 const isGateway = h => subnetGateways[subnetOf(h.ip)] === h.ip;
@@ -234,6 +238,7 @@ document.addEventListener('keydown', e => {
 function matchesSearch(h) {
   if (!searchText) return true;
   const hay = [h.name, h.ip, h.vendor, h.device, DEVICE_LABELS[h.device], OS_LABELS[h.os], h.locationId && locationNames[h.locationId],
+    ...(h.groupIds || []).map(g => groupNames[g]),
     h.agent && h.agent.os, h.deviceInfo && JSON.stringify(h.deviceInfo)].filter(Boolean).join(' ').toLowerCase();
   return searchText.split(/\s+/).every(t => hay.includes(t));
 }
@@ -290,9 +295,41 @@ document.getElementById('kpis').addEventListener('click', e => {
   document.querySelector(`#host-tabs .tab-btn[data-tab="${k}"]`)?.click();
 });
 
+// ---- Screens: show only the groups picked for a screen ----
+// Started from ?screen=N (wall displays), else the last one picked in this browser.
+let activeScreenId = (() => {
+  const fromUrl = new URLSearchParams(location.search).get('screen');
+  if (fromUrl !== null) return Number(fromUrl) || null;
+  try { return Number(localStorage.getItem('wm-screen')) || null; } catch (e) { return null; }
+})();
+const activeScreen = () => screens.find(sc => sc.id === activeScreenId) || null;
+const screenSelect = document.getElementById('screen-select');
+
+function renderScreenSelect() {
+  const pick = document.getElementById('screen-pick');
+  if (activeScreenId && !activeScreen()) activeScreenId = null;
+  pick.classList.toggle('hidden', !screens.length);
+  pick.classList.toggle('active', !!activeScreenId);
+  screenSelect.innerHTML = '<option value="">All cards</option>'
+    + screens.map(sc => `<option value="${sc.id}">${escapeHtml(sc.name)}</option>`).join('');
+  screenSelect.value = activeScreenId ? String(activeScreenId) : '';
+}
+
+screenSelect.addEventListener('change', () => {
+  activeScreenId = Number(screenSelect.value) || null;
+  try { activeScreenId ? localStorage.setItem('wm-screen', activeScreenId) : localStorage.removeItem('wm-screen'); } catch (e) { /* this page only */ }
+  const url = new URL(location.href);
+  if (activeScreenId) url.searchParams.set('screen', activeScreenId); else url.searchParams.delete('screen');
+  history.replaceState(null, '', url);
+  render();
+});
+
 function render() {
   renderSubnetTabs();
-  const inSubnet = [...hostsById.values()].filter(h => !activeSubnet || subnetOf(h.ip) === activeSubnet);
+  renderScreenSelect();
+  const screen = activeScreen();
+  const inSubnet = [...hostsById.values()].filter(h => (!activeSubnet || subnetOf(h.ip) === activeSubnet)
+    && (!screen || (h.groupIds || []).some(g => screen.groupIds.includes(g))));
   renderKpis(inSubnet);
   const hosts = inSubnet.filter(matchesSearch);
 
@@ -307,7 +344,9 @@ function render() {
   }
 
   if (!hosts.length) {
-    grid.innerHTML = searchText ? `<div class="empty">Nothing matches “${escapeHtml(searchInput.value.trim())}”.</div>` : activeSubnet ? `<div class="empty">No hosts in ${escapeHtml(activeSubnet)}.</div>`
+    grid.innerHTML = searchText ? `<div class="empty">Nothing matches “${escapeHtml(searchInput.value.trim())}”.</div>`
+      : screen ? `<div class="empty">No cards in the groups on the “${escapeHtml(screen.name)}” screen${activeSubnet ? ` in ${escapeHtml(activeSubnet)}` : ''}.${screen.groupIds.length ? '' : ' Pick its groups in Settings → Groups.'}</div>`
+      : activeSubnet ? `<div class="empty">No hosts in ${escapeHtml(activeSubnet)}.</div>`
       : '<div class="empty">No hosts yet — add one in Settings → Add hosts to start monitoring.</div>';
     return;
   }
@@ -318,6 +357,14 @@ function render() {
     return;
   }
 
+  if (screen) {
+    renderByGroup(filtered, screen.groupIds);
+    return;
+  }
+  if (groupMode === 'group') {
+    renderByGroup(filtered);
+    return;
+  }
   if (groupMode === 'host') {   // topology.js
     renderByHost(filtered);
     return;
@@ -429,6 +476,39 @@ function renderByLocation(hosts) {
   }
 }
 
+/**
+ * Host view by card group (Settings -> Groups), then cards with no group. A card
+ * in several groups shows in each of them. With `order` (a screen's group ids),
+ * only those groups, in that order.
+ */
+function renderByGroup(hosts, order = null) {
+  grid.innerHTML = '';
+  const byGroup = new Map();
+  for (const h of hosts) {
+    const inGroups = (h.groupIds || []).filter(g => groupNames[g]);
+    for (const key of inGroups.length ? inGroups : [0]) {
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key).push(h);
+    }
+  }
+  const keys = order ? order.filter(id => byGroup.has(id))
+    : [...byGroup.keys()].filter(k => k).sort((a, b) => groupNames[a].localeCompare(groupNames[b]));
+  if (!order && byGroup.has(0)) keys.push(0);
+  for (const key of keys) {
+    const list = byGroup.get(key).sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip));
+    const section = document.createElement('div');
+    section.className = 'network-group';
+    section.innerHTML = `<h3 class="network-group-title">${key ? escapeHtml(groupNames[key])
+      : `No group <span class="muted small">— set one in a card's Edit${IS_ADMIN && !Object.keys(groupNames).length ? ' (add groups in Settings → Groups)' : ''}</span>`}
+      <span class="network-group-count">${list.length}</span></h3>`;
+    const inner = document.createElement('div');
+    inner.className = 'grid';
+    for (const h of list) inner.appendChild(renderCard(h));
+    section.appendChild(inner);
+    grid.appendChild(section);
+  }
+}
+
 function renderCard(host) {
   const card = document.createElement('div');
   const alertSev = host.mutedUntil ? null : worstAlertFor(host.id);
@@ -451,7 +531,7 @@ function renderCard(host) {
       <span class="card-icon ${statusClass(host)}" title="${escapeHtml(DEVICE_LABELS[host.device] || host.device || '')}">${cardIcon(host)}</span>
       <div class="card-title">
         <span class="card-name${host.name === host.ip ? ' unnamed' : ''}">${host.name === host.ip ? 'Unnamed' : escapeHtml(host.name)}</span>
-        <div class="card-ip"><span class="mono">${escapeHtml(host.ip)}</span>${OS_SHORT[host.os] ? `<span class="card-os">${OS_SHORT[host.os]}</span>` : ''}${host.locationId && locationNames[host.locationId] ? `<span class="card-loc">${escapeHtml(locationNames[host.locationId])}</span>` : ''}</div>
+        <div class="card-ip"><span class="mono">${escapeHtml(host.ip)}</span>${OS_SHORT[host.os] ? `<span class="card-os">${OS_SHORT[host.os]}</span>` : ''}${host.locationId && locationNames[host.locationId] ? `<span class="card-loc">${escapeHtml(locationNames[host.locationId])}</span>` : ''}${(host.groupIds || []).filter(g => groupNames[g]).length ? `<span class="card-grp">${escapeHtml(host.groupIds.filter(g => groupNames[g]).map(g => groupNames[g]).join(', '))}</span>` : ''}</div>
       </div>
       <span${age && age !== 'recent' && host.lastSeenAt ? ` title="Last seen ${escapeHtml(new Date(host.lastSeenAt).toLocaleString())}"` : ''}>${statusBadge(host)}</span>
     </div>

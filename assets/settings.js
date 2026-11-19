@@ -2,8 +2,40 @@
 // Uses api(), escapeHtml(), fmtAgoDate() and IS_ADMIN from app.js.
 
 const settingsBackdrop = document.getElementById('settings-backdrop');
-const settingsTabs = document.querySelectorAll('.settings-tabs .tab-btn');
+const settingsTabs = document.querySelectorAll('.settings-nav-item');
 const settingsPanels = document.querySelectorAll('.settings-panel');
+
+// Each panel's blocks become cards: a block starts at each heading (h3) or
+// nested section (an "Add …" details stays with the block above it). A first heading that only repeats the section's name is
+// dropped, since the window's header already shows it.
+settingsPanels.forEach(panel => {
+  const label = document.querySelector(`.settings-nav-item[data-panel="${panel.dataset.panel}"]`)?.textContent.trim().toLowerCase();
+  const first = panel.firstElementChild;
+  if (first && first.tagName === 'H3' && first.textContent.trim().toLowerCase() === label) first.remove();
+  let card = null;
+  for (const el of [...panel.children]) {
+    if (el.classList.contains('settings-raw') || el.classList.contains('settings-intro')) {   // laid out by hand
+      card = null;
+      continue;
+    }
+    if (el.tagName === 'SECTION') {
+      // A heading left on its own just above the section belongs inside it.
+      if (card && card.children.length === 1 && card.firstElementChild.tagName === 'H3') {
+        el.prepend(card.firstElementChild);
+        card.remove();
+      }
+      el.classList.add('settings-card');
+      card = null;
+      continue;
+    }
+    if (el.tagName === 'H3' || !card) {
+      card = document.createElement('div');
+      card.className = 'settings-card';
+      panel.insertBefore(card, el);
+    }
+    card.appendChild(el);
+  }
+});
 
 function openSettings(panel = 'account') {
   settingsBackdrop.classList.remove('hidden');
@@ -18,11 +50,18 @@ function showSettingsPanel(name) {
   if (!IS_ADMIN && !['account', 'display', 'schedules'].includes(name)) name = 'account';
   settingsTabs.forEach(b => b.classList.toggle('active', b.dataset.panel === name));
   settingsPanels.forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+  const tab = document.querySelector(`.settings-nav-item[data-panel="${name}"]`);
+  document.getElementById('settings-title').textContent = tab ? tab.textContent.trim() : 'Settings';
+  document.getElementById('settings-desc').textContent = tab ? tab.dataset.desc || '' : '';
+  document.getElementById('settings-body').scrollTop = 0;
+  tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });   // phones: the strip of sections scrolls sideways
   if (name === 'users') loadUsers();
   if (name === 'notifications') loadNotifications();
   if (name === 'schedules') loadSchedules();   // updates.js
   if (name === 'subnets') loadSubnets();
   if (name === 'locations') loadLocations();
+  if (name === 'groups') loadGroups();
+  if (name === 'changes') loadChangeSettings();   // changes.js
   if (name === 'homeassistant') loadHomeAssistant();
 }
 
@@ -734,6 +773,85 @@ document.getElementById('location-form').addEventListener('submit', e => {
   const input = document.getElementById('location-name');
   if (!input.value.trim()) return;
   locationRequest('POST', null, { name: input.value }).then(() => { input.value = ''; });
+});
+
+// ---- Groups and screens ----
+
+function applyGroups({ groups, screens: list }) {
+  groupNames = Object.fromEntries(groups.map(g => [g.id, g.name]));   // app.js: cards, the editor, screens
+  screens = list;
+  const box = document.getElementById('group-list');
+  box.innerHTML = groups.length ? `<table class="switch-info-table loc-table"><tbody>${groups.map(g => `
+      <tr data-id="${g.id}">
+        <td><input type="text" maxlength="60" value="${escapeHtml(g.name)}" aria-label="Group name" /></td>
+        <td class="muted small">${g.hosts} card${g.hosts === 1 ? '' : 's'}</td>
+        <td class="loc-actions"><button type="button" class="section-btn" data-act="save">Rename</button>
+          <button type="button" class="section-btn danger" data-act="del">Remove</button></td>
+      </tr>`).join('')}</tbody></table>`
+    : '<p class="muted">No groups yet.</p>';
+  box.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-act="save"]').addEventListener('click', () => groupRequest('group-msg', 'PATCH', `id=${id}`, { name: tr.querySelector('input').value }));
+    tr.querySelector('[data-act="del"]').addEventListener('click', () => {
+      const n = tr.querySelector('input').value;
+      if (confirm(`Remove the group "${n}"? It's taken off its cards, screens and update schedules (a schedule left with no groups is turned off).`)) groupRequest('group-msg', 'DELETE', `id=${id}`);
+    });
+  });
+
+  const sbox = document.getElementById('screen-list');
+  sbox.innerHTML = list.length ? list.map(sc => `
+      <div class="screen-block" data-id="${sc.id}">
+        <div class="screen-block-head">
+          <input type="text" maxlength="60" value="${escapeHtml(sc.name)}" aria-label="Screen name" />
+          <a class="muted small" href="?screen=${sc.id}" title="Link that opens straight to this screen">?screen=${sc.id}</a>
+          <button type="button" class="section-btn" data-act="save">Save</button>
+          <button type="button" class="section-btn danger" data-act="del">Remove</button>
+        </div>
+        <div class="screen-groups">${groups.length ? [...sc.groupIds.filter(id => groupNames[id]), ...groups.map(g => g.id).filter(id => !sc.groupIds.includes(id))]
+          .map(id => `<label><input type="checkbox" value="${id}" ${sc.groupIds.includes(id) ? 'checked' : ''} /> ${escapeHtml(groupNames[id])}</label>`).join('')
+          : '<span class="muted small">Add some groups above first.</span>'}</div>
+      </div>`).join('')
+    : '<p class="muted">No screens yet.</p>';
+  sbox.querySelectorAll('.screen-block').forEach(b => {
+    const id = b.dataset.id;
+    const picked = () => [...b.querySelectorAll('.screen-groups input:checked')].map(i => Number(i.value));
+    b.querySelector('[data-act="save"]').addEventListener('click', () =>
+      groupRequest('screen-msg', 'PATCH', `type=screen&id=${id}`, { name: b.querySelector('input[type=text]').value, groupIds: picked() }));
+    b.querySelector('[data-act="del"]').addEventListener('click', () => {
+      if (confirm(`Remove the screen "${b.querySelector('input[type=text]').value}"? The groups and cards stay.`)) groupRequest('screen-msg', 'DELETE', `type=screen&id=${id}`);
+    });
+  });
+  render();   // app.js
+}
+
+async function loadGroups() {
+  try { applyGroups(await jsonApi('api/groups.php', 'GET')); }
+  catch (err) { setMsg(document.getElementById('group-msg'), err.message, false); }
+}
+
+async function groupRequest(msgId, method, query, body) {
+  const msg = document.getElementById(msgId);
+  try {
+    applyGroups(await jsonApi(`api/groups.php${query ? `?${query}` : ''}`, method, body));
+    setMsg(document.getElementById(msgId), method === 'POST' ? 'Added' : method === 'DELETE' ? 'Removed' : 'Saved');
+    loadHosts().catch(() => {});
+  } catch (err) {
+    setMsg(msg, err.message, false);
+  }
+}
+
+document.getElementById('group-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('group-name');
+  if (!input.value.trim()) return;
+  groupRequest('group-msg', 'POST', '', { name: input.value }).then(() => { input.value = ''; });
+});
+
+document.getElementById('screen-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('screen-name');
+  if (!input.value.trim()) return;
+  groupRequest('screen-msg', 'POST', 'type=screen', { name: input.value, groupIds: [] }).then(() => { input.value = ''; });
 });
 
 // ---- Home Assistant ----

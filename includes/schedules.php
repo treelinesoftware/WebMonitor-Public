@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/jobs.php';
 require_once __DIR__ . '/notify.php';
+require_once __DIR__ . '/changes.php';
 
 /**
  * Update windows: recurring jobs (e.g. security updates every Sunday at
@@ -14,7 +15,7 @@ require_once __DIR__ . '/notify.php';
  */
 
 const SCHEDULE_JOB_TYPES = ['updates', 'refresh', 'reboot'];
-const SCHEDULE_TARGETS = ['all', 'linux', 'windows', 'hosts'];
+const SCHEDULE_TARGETS = ['all', 'linux', 'windows', 'hosts', 'groups'];
 const SCHEDULE_GRACE_MIN = 30;
 const DAY_NAMES = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'];
 
@@ -63,6 +64,14 @@ function schedule_host_ids(array $sched): array {
     if ($sched['targets'] === 'hosts') {
         return array_values(array_filter(array_map('intval', json_decode($sched['host_ids'], true) ?: [])));
     }
+    if ($sched['targets'] === 'groups') {
+        // Cards in the groups right now that have an agent (no agent = nothing to update).
+        $agents = agent_summaries();
+        $ids = array_values(array_filter(hosts_in_groups(json_decode((string) ($sched['group_ids'] ?? ''), true) ?: []),
+            fn($hid) => isset($agents[$hid])));
+        sort($ids);
+        return $ids;
+    }
     $ids = [];
     foreach (agent_summaries() as $hid => $a) {
         if ($sched['targets'] === 'all' || $a['platform'] === $sched['targets']) $ids[] = $hid;
@@ -88,6 +97,7 @@ function schedule_row(array $s): array {
         'atTime' => $s['at_time'],
         'targets' => $s['targets'],
         'hostIds' => array_map('intval', json_decode($s['host_ids'], true) ?: []),
+        'groupIds' => array_map('intval', json_decode((string) ($s['group_ids'] ?? ''), true) ?: []),
         'nextRun' => $next ? $next->getTimestamp() * 1000 : null,
         'lastRun' => $last ? [
             'startedAt' => (int) $last['started_at'],
@@ -114,16 +124,27 @@ function schedule_fields(array $in): array {
     if (!in_array($targets, SCHEDULE_TARGETS, true)) throw new InvalidArgumentException('Unknown target.');
     $hostIds = array_values(array_unique(array_filter(array_map('intval', (array) ($in['hostIds'] ?? [])))));
     if ($targets === 'hosts' && !$hostIds) throw new InvalidArgumentException('Pick at least one host.');
+    $groupIds = array_values(array_unique(array_filter(array_map('intval', (array) ($in['groupIds'] ?? [])))));
+    if ($groupIds) {
+        $known = array_map('intval', db()->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN));
+        $groupIds = array_values(array_intersect($groupIds, $known));
+    }
+    if ($targets === 'groups' && !$groupIds) throw new InvalidArgumentException('Pick at least one group.');
     return [
         'name' => $name, 'job_type' => $type, 'params' => json_encode(job_params($type, (array) ($in['params'] ?? []))),
         'days' => $days, 'at_time' => $time, 'targets' => $targets,
         'host_ids' => json_encode($targets === 'hosts' ? $hostIds : []),
+        'group_ids' => json_encode($targets === 'groups' ? $groupIds : []),
         'enabled' => array_key_exists('enabled', $in) ? (int) (bool) $in['enabled'] : 1,
     ];
 }
 
-/** Queues the schedule's jobs now and records the run. */
-function run_schedule(array $sched, bool $manual = false): array {
+/**
+ * Queues the schedule's jobs now and records the run. $change: the window's
+ * change record (scheduled runs); a manual "Run now" gets its own record,
+ * requested by $user.
+ */
+function run_schedule(array $sched, bool $manual = false, ?array $change = null, ?array $user = null): array {
     $params = json_decode($sched['params'], true) ?: [];
     $res = create_jobs(schedule_host_ids($sched), $sched['job_type'], $params,
                        $sched['created_by'] !== null ? (int) $sched['created_by'] : null, (int) $sched['id']);
@@ -136,6 +157,15 @@ function run_schedule(array $sched, bool $manual = false): array {
     }
     db()->prepare('INSERT INTO schedule_runs (schedule_id, started_at, manual, job_ids, skipped, finished_at, summary) VALUES (?, ?, ?, ?, ?, ?, ?)')
         ->execute([$sched['id'], $now, $manual ? 1 : 0, json_encode($res['created']), json_encode($res['skipped']), $finished, $summary]);
+    $runId = (int) db()->lastInsertId();
+    if ($change !== null) {
+        change_started($change, $runId, $res);
+    } else {
+        $res['change'] = change_record_manual($res, $sched['job_type'], $params, $user, "Run now: {$sched['name']}", (int) $sched['id'], $runId);
+    }
+    audit_log('schedule.run', ($manual ? 'Ran' : 'Window ran for') . " schedule \"{$sched['name']}\": " . count($res['created'])
+        . ' job(s) queued, ' . count($res['skipped']) . ' skipped', "schedule #{$sched['id']}",
+        ['jobIds' => $res['created'], 'skipped' => $res['skipped']], 'ok', $user, !$manual);
     if ($finished !== null && !$manual) {
         notify_all("WebMonitor: scheduled \"{$sched['name']}\" didn't run", $summary . "\n" . skipped_lines($res['skipped']), 'warning');
     }
@@ -161,9 +191,15 @@ function process_schedules(): void {
             $pdo->prepare('UPDATE update_schedules SET last_run_key = ? WHERE id = ?')->execute([$key, $s['id']]);
             $lateMin = ($now->getTimestamp() - $occ->getTimestamp()) / 60;
             if ($lateMin > SCHEDULE_GRACE_MIN) continue;   // missed (server down); wait for the next one
-            run_schedule($s);
+            if (in_array($s['job_type'], CHANGE_JOB_TYPES, true)) {
+                $gate = change_gate($s, $occ);   // change record: approved / not rejected?
+                if ($gate['run']) run_schedule($s, false, $gate['change']);
+            } else {
+                run_schedule($s);
+            }
         }
         report_finished_runs();
+        change_process();
     } finally {
         $pdo->query("SELECT RELEASE_LOCK('webmonitor_schedules')");
     }

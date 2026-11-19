@@ -352,12 +352,14 @@ $user = require_login_page();
 <meta name="subnet-gateways" content="<?= htmlspecialchars(json_encode((object) subnet_gateways()), ENT_QUOTES) ?>" />
 <meta name="app-version" content="<?= htmlspecialchars(app_version(), ENT_QUOTES) ?>" />
 <meta name="locations" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM locations ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
+<meta name="card-groups" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM card_groups ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
+<meta name="screens" content="<?= htmlspecialchars(json_encode(screens_list()), ENT_QUOTES) ?>" />
 <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES) ?>" />
 <title>WebMonitor</title>
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=56" />
+<link rel="stylesheet" href="assets/style.css?v=59" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -570,6 +572,18 @@ $user = require_login_page();
     </div>
     <div id="updates-table"></div>
     <div class="schedule-summary" id="schedule-summary"></div>
+    <div class="updates-h-row">
+      <h3 class="updates-h">Change records <span class="tab-count" id="changes-pending"></span></h3>
+      <div class="section-actions">
+        <div class="segmented" role="group" aria-label="Show changes">
+          <button type="button" class="group-btn active" data-changes="open">Open</button>
+          <button type="button" class="group-btn" data-changes="all">All</button>
+        </div>
+        <button type="button" class="section-btn admin-only" id="changes-csv">Export CSV</button>
+      </div>
+    </div>
+    <p class="hint" id="changes-hint"></p>
+    <div id="changes-table"></div>
     <h3 class="updates-h">Job history</h3>
     <div id="jobs-table"></div>
   </section>
@@ -579,6 +593,38 @@ $user = require_login_page();
       <button type="button" class="group-btn active" data-report="topology">Network topology</button>
       <button type="button" class="group-btn" data-report="devices">Devices</button>
       <button type="button" class="group-btn" data-report="traffic">Traffic</button>
+      <button type="button" class="group-btn admin-only" data-report="audit">Audit log</button>
+    </div>
+    <div class="report-panel hidden" data-report="audit">
+      <div class="report-head">
+        <div>
+          <h2 class="report-title">Audit log</h2>
+          <div class="muted small" id="audit-meta"></div>
+        </div>
+        <div class="section-actions no-print">
+          <button type="button" class="section-btn" id="audit-verify">Verify integrity</button>
+          <button type="button" class="section-btn" id="audit-csv">Export CSV</button>
+        </div>
+      </div>
+      <p class="hint no-print">Every change made in WebMonitor — sign-ins, settings, hosts, users, update jobs, schedules and change
+        records — with who, when and from where. Entries can't be edited from WebMonitor, and each one is chained to the one before
+        by a hash, so <strong>Verify integrity</strong> shows whether any were changed or removed in the database.</p>
+      <form class="audit-filters no-print" id="audit-filters">
+        <input type="search" id="audit-q" placeholder="Search summary, target, details…" />
+        <select id="audit-user"><option value="">Anyone</option><option value="(system)">WebMonitor (automatic)</option></select>
+        <select id="audit-action">
+          <option value="">All actions</option>
+          <option value="change.">Change records</option>
+          <option value="schedule.">Schedule runs</option>
+          <option value="auth.">Sign-ins</option>
+          <option value="api.">Changes made in the dashboard</option>
+          <option value="audit.">Audit log checks / exports</option>
+        </select>
+        <select id="audit-outcome"><option value="">Any outcome</option><option value="ok">OK</option><option value="denied">Denied</option><option value="failed">Failed</option></select>
+        <label>From <input type="date" id="audit-from" /></label>
+        <label>To <input type="date" id="audit-to" /></label>
+      </form>
+      <div id="audit-body"></div>
     </div>
     <div class="report-panel" data-report="topology">
     <div class="report-head">
@@ -639,7 +685,12 @@ $user = require_login_page();
       <button class="group-btn" data-group="subnet" type="button">Subnet</button>
       <button class="group-btn" data-group="host" type="button">Host</button>
       <button class="group-btn" data-group="location" type="button">Location</button>
+      <button class="group-btn" data-group="group" type="button">Group</button>
     </div>
+    <label class="screen-pick" id="screen-pick" title="Show only the groups picked for a screen (Settings → Groups)">
+      <span class="seg-label">Screen</span>
+      <select id="screen-select" aria-label="Screen"><option value="">All cards</option></select>
+    </label>
   </div>
 
   <section id="grid"></section>
@@ -648,19 +699,46 @@ $user = require_login_page();
 
 <div id="settings-backdrop" class="modal-backdrop hidden">
   <div class="modal settings-modal" role="dialog" aria-labelledby="settings-title">
-    <button id="settings-close" class="modal-close" aria-label="Close">&times;</button>
-    <h2 id="settings-title">Settings</h2>
-    <nav class="settings-tabs">
-      <button class="tab-btn active" data-panel="account">Account</button>
-      <button class="tab-btn" data-panel="display">Display</button>
-      <button class="tab-btn" data-panel="schedules">Schedules</button>
-      <button class="tab-btn admin-only" data-panel="users">Users</button>
-      <button class="tab-btn admin-only" data-panel="notifications">Notifications</button>
-      <button class="tab-btn admin-only" data-panel="subnets">Subnets</button>
-      <button class="tab-btn admin-only" data-panel="locations">Locations</button>
-      <button class="tab-btn admin-only" data-panel="homeassistant">Home Assistant</button>
-      <button class="tab-btn admin-only" data-panel="hosts">Add hosts</button>
-    </nav>
+    <aside class="settings-side">
+      <h2 class="settings-side-title">Settings</h2>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <div class="settings-nav-group">
+          <div class="settings-nav-label">You</div>
+          <button type="button" class="settings-nav-item active" data-panel="account" data-desc="Your sign-in password.">Account</button>
+          <button type="button" class="settings-nav-item" data-panel="display" data-desc="Theme and how many host cards fit on a row. Saved for your account.">Display</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Monitoring</div>
+          <button type="button" class="settings-nav-item" data-panel="hosts" data-desc="Add hosts one at a time, or scan a network for them.">Add hosts</button>
+          <button type="button" class="settings-nav-item" data-panel="subnets" data-desc="Names, gateways and automatic discovery for each network.">Subnets</button>
+          <button type="button" class="settings-nav-item" data-panel="locations" data-desc="Rooms, buildings or racks to show on cards.">Locations</button>
+          <button type="button" class="settings-nav-item" data-panel="groups" data-desc="Your own card groups, and screens that show only some of them.">Groups &amp; screens</button>
+        </div>
+        <div class="settings-nav-group">
+          <div class="settings-nav-label">Updates</div>
+          <button type="button" class="settings-nav-item" data-panel="schedules" data-desc="Recurring update windows for hosts with an agent.">Update schedules</button>
+          <button type="button" class="settings-nav-item admin-only" data-panel="changes" data-desc="Change records, the change email list and optional approval.">Change management</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Alerts</div>
+          <button type="button" class="settings-nav-item" data-panel="notifications" data-desc="Where alerts are sent, what triggers them, and what was sent.">Notifications</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Administration</div>
+          <button type="button" class="settings-nav-item" data-panel="users" data-desc="Who can sign in, and whether they can change things or only look.">Users</button>
+          <button type="button" class="settings-nav-item" data-panel="homeassistant" data-desc="Link WebMonitor to Home Assistant.">Home Assistant</button>
+        </div>
+      </nav>
+    </aside>
+    <div class="settings-main">
+      <header class="settings-head">
+        <div>
+          <h3 class="settings-head-title" id="settings-title">Account</h3>
+          <p class="settings-head-desc" id="settings-desc"></p>
+        </div>
+        <button id="settings-close" class="modal-close" type="button" aria-label="Close settings">&times;</button>
+      </header>
+      <div class="settings-body" id="settings-body">
 
     <section class="settings-panel" data-panel="account">
       <h3>Change your password</h3>
@@ -773,6 +851,61 @@ $user = require_login_page();
       </form>
     </section>
 
+    <section class="settings-panel admin-only hidden" data-panel="groups">
+      <h3>Groups</h3>
+      <p class="hint">Sort cards into your own groups (e.g. Servers, Cameras, Office PCs). Tick a card's groups in its <strong>Edit</strong>
+        (a card can be in several), show the host view by <strong>Group</strong>, or target a group with an update schedule.
+        Removing a group takes it off its cards, screens and schedules.</p>
+      <div id="group-list"></div>
+      <form id="group-form" class="subnet-add">
+        <input type="text" id="group-name" maxlength="60" placeholder="New group, e.g. Servers, Cameras, Office PCs" />
+        <button type="submit" class="section-btn">Add group</button>
+        <span class="form-msg" id="group-msg"></span>
+      </form>
+
+      <h3>Screens</h3>
+      <p class="hint">A screen shows only the groups you tick, one section per group, in the order listed. Pick it from
+        <strong>Screen</strong> above the cards, or open <code>?screen=N</code> on a wall display to start on it.</p>
+      <div id="screen-list"></div>
+      <form id="screen-form" class="subnet-add">
+        <input type="text" id="screen-name" maxlength="60" placeholder="New screen, e.g. NOC wall, Cameras" />
+        <button type="submit" class="section-btn">Add screen</button>
+        <span class="form-msg" id="screen-msg"></span>
+      </form>
+    </section>
+
+    <section class="settings-panel admin-only hidden" data-panel="changes">
+      <p class="hint settings-intro">Every update window and every manual update, reboot, agent upgrade or service restart gets a change
+        record (Updates → Change records) and an entry in the audit log (Reports → Audit log).</p>
+      <div id="cm-email-warning" class="settings-raw"></div>
+      <form id="cm-form" class="settings-form settings-raw settings-cards">
+        <div class="settings-card">
+          <h3>Change emails</h3>
+          <p class="hint">Sent to their own list through your email channel in <strong>Notifications</strong>; alert emails are unaffected.</p>
+          <label>Email addresses (comma-separated)
+            <textarea id="cm-recipients" rows="2" placeholder="changes@example.com, it-manager@example.com"></textarea></label>
+          <label class="check"><input type="checkbox" id="cm-manual" /> Also email when a manual change starts</label>
+        </div>
+        <div class="settings-card">
+          <h3>Advance notice</h3>
+          <div class="num-unit"><input type="number" id="cm-lead" min="0" max="720" step="1" aria-label="Hours before" /> hours before each scheduled window</div>
+          <p class="hint">The change record is raised and emailed then (0 = when the window runs), listing the hosts and pending packages
+            at that moment. Hosts are checked again when the window runs.</p>
+        </div>
+        <div class="settings-card">
+          <h3>Approval</h3>
+          <label class="check"><input type="checkbox" id="cm-approval" /> Require approval before scheduled windows run</label>
+          <p class="hint check-hint">An admin approves each window in Updates → Change records; one not approved in time is skipped and
+            recorded. Manual changes count as approved by the admin who starts them. Any planned window can be rejected either way.</p>
+        </div>
+        <div class="form-row settings-actions">
+          <button type="submit" class="primary-btn">Save</button>
+          <button type="button" class="section-btn" id="cm-test">Send test email</button>
+          <span class="form-msg" id="cm-msg"></span>
+        </div>
+      </form>
+    </section>
+
     <section class="settings-panel admin-only hidden" data-panel="homeassistant">
       <h3>Home Assistant</h3>
       <p class="hint">WebMonitor reads Home Assistant's device list every hour: the names you gave devices, maker, model,
@@ -841,6 +974,8 @@ $user = require_login_page();
         <div id="scan-results"></div>
       </section>
     </section>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -947,15 +1082,15 @@ $user = require_login_page();
   </div>
 </div>
 
-<script src="assets/app.js?v=52"></script>
-<script src="assets/topology.js?v=45"></script>
-<script src="assets/nas.js?v=45"></script>
+<script src="assets/app.js?v=54"></script>
+<script src="assets/topology.js?v=46"></script>
+<script src="assets/nas.js?v=47"></script>
 <script src="assets/history.js?v=45"></script>
-<script src="assets/settings.js?v=51"></script>
-<script src="assets/updates.js?v=53"></script>
+<script src="assets/settings.js?v=55"></script>
+<script src="assets/updates.js?v=55"></script>
 <script src="assets/configbackup.js?v=45"></script>
 <script src="assets/portmap.js?v=45"></script>
-<script src="assets/reports.js?v=45"></script>
+<script src="assets/reports.js?v=46"></script>
 <script src="assets/wireless.js?v=45"></script>
 <script src="assets/devices.js?v=50"></script>
 <script src="assets/traffic.js?v=45"></script>
@@ -964,6 +1099,7 @@ $user = require_login_page();
 <script src="assets/services.js?v=1"></script>
 <script src="assets/network.js?v=3"></script>
 <script src="assets/flexlm.js?v=1"></script>
+<script src="assets/changes.js?v=1"></script>
 <script src="assets/help.js?v=3"></script>
 </body>
 </html>
@@ -3495,6 +3631,206 @@ if (empty($_GET['open'])) {
 echo json_encode($out);
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/api/audit.php")"
+cat > "$APP_DIR/api/audit.php" <<'WEBMON_FILE_EOF'
+<?php
+// Audit log (Reports -> Audit log). Admins only.
+//   GET [?q=text&user=name&action=prefix&outcome=ok|denied|failed&from=ms&to=ms&limit=N&before=ID]
+//       -> {entries, more}
+//   GET ?format=csv[&same filters]   -> CSV export
+//   GET ?verify=1                    -> {ok, checked, brokenAt, reason}: re-checks the hash chain
+require_once __DIR__ . '/../includes/audit.php';
+require_once __DIR__ . '/../includes/auth.php';
+header('Content-Type: application/json');
+require_api_auth('admin');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+    http_response_code(405);
+    echo json_encode(['error' => 'method not allowed']);
+    exit;
+}
+
+if (!empty($_GET['verify'])) {
+    $r = audit_verify();
+    audit_log('audit.verified', $r['ok'] ? "Audit log integrity checked: {$r['checked']} entries, chain intact"
+        : "Audit log integrity check FAILED at entry #{$r['brokenAt']}: {$r['reason']}", 'audit log', $r, $r['ok'] ? 'ok' : 'failed');
+    echo json_encode($r);
+    exit;
+}
+
+$where = [];
+$args = [];
+if (($q = trim((string) ($_GET['q'] ?? ''))) !== '') {
+    $where[] = '(summary LIKE ? OR target LIKE ? OR details LIKE ?)';
+    array_push($args, "%$q%", "%$q%", "%$q%");
+}
+if (($u = trim((string) ($_GET['user'] ?? ''))) !== '') {
+    if ($u === '(system)') {
+        $where[] = 'username IS NULL';
+    } else {
+        $where[] = 'username = ?';
+        $args[] = $u;
+    }
+}
+if (($a = trim((string) ($_GET['action'] ?? ''))) !== '') {
+    $where[] = 'action LIKE ?';
+    $args[] = str_replace(['%', '_'], ['\%', '\_'], $a) . '%';
+}
+if (in_array($_GET['outcome'] ?? '', ['ok', 'denied', 'failed'], true)) {
+    $where[] = 'outcome = ?';
+    $args[] = $_GET['outcome'];
+}
+if (!empty($_GET['from'])) { $where[] = 'ts >= ?'; $args[] = (int) $_GET['from']; }
+if (!empty($_GET['to'])) { $where[] = 'ts <= ?'; $args[] = (int) $_GET['to']; }
+$sqlWhere = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+if (($_GET['format'] ?? '') === 'csv') {
+    audit_log('audit.exported', 'Exported the audit log as CSV', 'audit log', ['filters' => array_diff_key($_GET, ['format' => 1])]);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="webmonitor-audit-' . date('Ymd-His') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['ID', 'Time', 'User', 'IP', 'Action', 'Target', 'Summary', 'Outcome', 'Details', 'Hash', 'Previous hash']);
+    $stmt = db()->prepare("SELECT * FROM audit_log$sqlWhere ORDER BY id");
+    $stmt->execute($args);
+    while ($r = $stmt->fetch()) {
+        fputcsv($out, [$r['id'], date('Y-m-d H:i:s', intdiv((int) $r['ts'], 1000)), $r['username'] ?? '(WebMonitor)', $r['ip'],
+                       $r['action'], $r['target'], $r['summary'], $r['outcome'], $r['details'], $r['hash'], $r['prev_hash']]);
+    }
+    exit;
+}
+
+$limit = max(1, min(500, (int) ($_GET['limit'] ?? 100)));
+if (!empty($_GET['before'])) {
+    $sqlWhere .= ($sqlWhere ? ' AND' : ' WHERE') . ' id < ?';
+    $args[] = (int) $_GET['before'];
+}
+$stmt = db()->prepare("SELECT * FROM audit_log$sqlWhere ORDER BY id DESC LIMIT " . ($limit + 1));
+$stmt->execute($args);
+$rows = $stmt->fetchAll();
+echo json_encode([
+    'entries' => array_map('audit_row', array_slice($rows, 0, $limit)),
+    'more' => count($rows) > $limit,
+    'users' => db()->query('SELECT DISTINCT username FROM audit_log WHERE username IS NOT NULL ORDER BY username')->fetchAll(PDO::FETCH_COLUMN),
+]);
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/api/changes.php")"
+cat > "$APP_DIR/api/changes.php" <<'WEBMON_FILE_EOF'
+<?php
+// Change records for updates (Updates -> Change records) and their settings.
+//   GET  [?status=open|closed|all&limit=N&before=ID]  -> {changes, settings, emailReady}   (any user)
+//   GET  ?id=N                                        -> {change: {... planned, outcome, history}}
+//   GET  ?format=csv[&status=...]                     -> CSV export (admins)
+//   POST ?id=N&decision=approve|reject {note}         -> approve / reject (admins)
+//   GET  ?what=settings                               -> change-management settings
+//   PUT  ?what=settings {recipients, lead_hours, require_approval, notify_manual}  (admins)
+//   POST ?what=test                                   -> send a test email to the change list (admins)
+require_once __DIR__ . '/../includes/schedules.php';
+require_once __DIR__ . '/../includes/auth.php';
+header('Content-Type: application/json');
+$me = require_api_auth_admin_writes();
+
+function fail(int $code, string $msg): void {
+    http_response_code($code);
+    echo json_encode(['error' => $msg]);
+    exit;
+}
+
+$pdo = db();
+$method = $_SERVER['REQUEST_METHOD'];
+$id = (int) ($_GET['id'] ?? 0);
+$what = (string) ($_GET['what'] ?? '');
+$input = $method === 'GET' ? [] : (json_decode(file_get_contents('php://input'), true) ?? []);
+$emailReady = fn() => change_email_channel() !== null;
+
+if ($what === 'settings') {
+    if ($method === 'PUT') {
+        try {
+            save_change_settings($input);
+        } catch (InvalidArgumentException $e) {
+            fail(400, $e->getMessage());
+        }
+    } elseif ($method !== 'GET') {
+        fail(405, 'method not allowed');
+    }
+    echo json_encode(['settings' => change_settings(), 'emailReady' => $emailReady()]);
+    exit;
+}
+
+if ($what === 'test' && $method === 'POST') {
+    $err = change_email('WebMonitor change management: test message',
+        "This is a test from WebMonitor change management.\nChange notices, decisions and completion reports will be sent to this list.\n");
+    if ($err !== null) fail(400, "Could not send: $err");
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($method === 'POST' && $id) {
+    try {
+        $c = change_decide($id, (string) ($_GET['decision'] ?? ''), (string) ($input['note'] ?? ''), $me);
+    } catch (InvalidArgumentException $e) {
+        fail(400, $e->getMessage());
+    }
+    echo json_encode(['change' => change_row($c, true)]);
+    exit;
+}
+
+if ($method !== 'GET') fail(405, 'method not allowed');
+
+if ($id) {
+    $c = change_get($id);
+    if (!$c) fail(404, 'Change not found.');
+    echo json_encode(['change' => change_row($c, true)]);
+    exit;
+}
+
+$status = (string) ($_GET['status'] ?? 'all');
+$where = match ($status) {
+    'open' => "status IN ('planned', 'pending_approval', 'approved', 'in_progress')",
+    'closed' => "status NOT IN ('planned', 'pending_approval', 'approved', 'in_progress')",
+    default => '1',
+};
+
+if (($_GET['format'] ?? '') === 'csv') {
+    if (!is_admin($me)) fail(403, 'admin access required');
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="webmonitor-changes-' . date('Ymd-His') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Change', 'Status', 'Source', 'Title', 'Action', 'Window / started', 'Requested by', 'Decision by', 'Decided at',
+                   'Decision note', 'Started', 'Finished', 'Hosts', 'Planned packages', 'Results', 'Skipped', 'Still pending after verification']);
+    $rows = $pdo->query("SELECT * FROM change_records WHERE $where ORDER BY id")->fetchAll();
+    $t = fn($ms) => $ms ? date('Y-m-d H:i:s', intdiv((int) $ms, 1000)) : '';
+    foreach ($rows as $c) {
+        $planned = json_decode($c['planned'], true) ?: [];
+        $outcome = json_decode((string) $c['outcome'], true) ?: [];
+        $ver = json_decode((string) $c['verification'], true) ?: [];
+        fputcsv($out, [
+            change_number((int) $c['id']), CHANGE_STATUS_LABELS[$c['status']] ?? $c['status'], $c['source'], $c['title'],
+            job_label($c['job_type'], json_decode($c['params'], true) ?: []), $t($c['planned_at']), $c['requested_name'] ?? 'WebMonitor',
+            $c['decided_name'], $t($c['decided_at']), $c['decision_note'], $t($c['started_at']), $t($c['finished_at']),
+            implode('; ', array_map(fn($p) => $p['host'], $planned)),
+            implode('; ', array_map(fn($p) => $p['host'] . ': ' . (is_array($p['packages'] ?? null)
+                ? implode(', ', array_map(fn($x) => $x['name'] . (isset($x['new']) ? ' ' . $x['new'] : ''), $p['packages'])) : '-'), $planned)),
+            implode('; ', array_map(fn($o) => "{$o['host']}: {$o['status']}" . ($o['summary'] ? " ({$o['summary']})" : ''), $outcome)),
+            implode('; ', array_map(fn($s) => "{$s['host']}: {$s['reason']}", json_decode((string) $c['skipped'], true) ?: [])),
+            implode('; ', array_map(fn($hid, $v) => ($planned[$hid]['host'] ?? "#$hid") . ': ' . (count($v['stillPending']) ? implode(', ', $v['stillPending']) : 'none'),
+                array_keys($ver), $ver)),
+        ]);
+    }
+    exit;
+}
+
+$limit = max(1, min(500, (int) ($_GET['limit'] ?? 50)));
+$before = (int) ($_GET['before'] ?? 0);
+$rows = $pdo->query("SELECT * FROM change_records WHERE $where" . ($before ? " AND id < $before" : '') . " ORDER BY id DESC LIMIT $limit")->fetchAll();
+echo json_encode([
+    'changes' => array_map('change_row', $rows),
+    'settings' => change_settings(),
+    'emailReady' => $emailReady(),
+    'pendingApproval' => (int) $pdo->query("SELECT COUNT(*) FROM change_records WHERE status = 'pending_approval'")->fetchColumn(),
+]);
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/api/device-info.php")"
 cat > "$APP_DIR/api/device-info.php" <<'WEBMON_FILE_EOF'
 <?php
@@ -3717,6 +4053,96 @@ if ($method === 'DELETE' && $id) {
 }
 
 fail(405, 'method not allowed');
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/api/groups.php")"
+cat > "$APP_DIR/api/groups.php" <<'WEBMON_FILE_EOF'
+<?php
+// Card groups (Settings -> Groups) and screens: named sets of groups the host
+// view can switch to.
+//   GET                                 -> {groups: [{id, name, hosts}], screens: [{id, name, groupIds}]}
+//   POST   {name}                       -> add a group (admins)
+//   PATCH  ?id=N {name}                 -> rename a group (admins)
+//   DELETE ?id=N                        -> remove a group: off its cards, screens and update schedules (admins)
+//   POST   ?type=screen {name, groupIds}        -> add a screen (admins)
+//   PATCH  ?type=screen&id=N {name?, groupIds?} -> change a screen (admins)
+//   DELETE ?type=screen&id=N                    -> remove a screen (admins)
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/auth.php';
+header('Content-Type: application/json');
+require_api_auth_admin_writes();
+
+function fail(int $code, string $msg): void {
+    http_response_code($code);
+    echo json_encode(['error' => $msg]);
+    exit;
+}
+
+$pdo = db();
+$method = $_SERVER['REQUEST_METHOD'];
+$id = (int) ($_GET['id'] ?? 0);
+$isScreen = ($_GET['type'] ?? '') === 'screen';
+$in = $method === 'GET' || $method === 'DELETE' ? [] : (json_decode(file_get_contents('php://input'), true) ?? []);
+$name = trim(preg_replace('/\s+/', ' ', (string) ($in['name'] ?? '')));
+$checkName = function () use ($name): void {
+    if ($name === '' || mb_strlen($name) > 60) fail(400, 'name must be 1-60 characters');
+};
+
+/** Screen's groups, in the order given; unknown ids are dropped. */
+function save_screen_groups(int $screenId, array $groupIds): void {
+    $pdo = db();
+    $known = array_flip(array_map('intval', $pdo->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN)));
+    $pdo->prepare('DELETE FROM screen_groups WHERE screen_id = ?')->execute([$screenId]);
+    $ins = $pdo->prepare('INSERT IGNORE INTO screen_groups (screen_id, group_id, sort) VALUES (?, ?, ?)');
+    $sort = 0;
+    foreach ($groupIds as $g) {
+        if (isset($known[(int) $g])) $ins->execute([$screenId, (int) $g, $sort++]);
+    }
+}
+
+try {
+    if ($isScreen) {
+        if ($method === 'POST') {
+            $checkName();
+            $pdo->prepare('INSERT INTO screens (name, sort) VALUES (?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM screens s2))')->execute([$name]);
+            save_screen_groups((int) $pdo->lastInsertId(), (array) ($in['groupIds'] ?? []));
+        } elseif ($method === 'PATCH') {
+            if (array_key_exists('name', $in)) {
+                $checkName();
+                $pdo->prepare('UPDATE screens SET name = ? WHERE id = ?')->execute([$name, $id]);
+            }
+            if (array_key_exists('groupIds', $in)) save_screen_groups($id, (array) $in['groupIds']);
+        } elseif ($method === 'DELETE') {
+            $pdo->prepare('DELETE FROM screens WHERE id = ?')->execute([$id]);
+        } elseif ($method !== 'GET') {
+            fail(405, 'method not allowed');
+        }
+    } else {
+        if ($method === 'POST') {
+            $checkName();
+            $pdo->prepare('INSERT INTO card_groups (name, sort) VALUES (?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM card_groups g2))')->execute([$name]);
+        } elseif ($method === 'PATCH') {
+            $checkName();
+            $pdo->prepare('UPDATE card_groups SET name = ? WHERE id = ?')->execute([$name, $id]);
+        } elseif ($method === 'DELETE') {
+            $pdo->prepare('DELETE FROM card_groups WHERE id = ?')->execute([$id]);
+            // Update schedules that targeted it lose it; one left with no groups is turned off.
+            foreach ($pdo->query("SELECT id, group_ids FROM update_schedules WHERE targets = 'groups'")->fetchAll() as $s) {
+                $ids = array_map('intval', json_decode((string) $s['group_ids'], true) ?: []);
+                if (!in_array($id, $ids, true)) continue;
+                $ids = array_values(array_diff($ids, [$id]));
+                $pdo->prepare('UPDATE update_schedules SET group_ids = ?, enabled = IF(? = 0, 0, enabled) WHERE id = ?')
+                    ->execute([json_encode($ids), count($ids), $s['id']]);
+            }
+        } elseif ($method !== 'GET') {
+            fail(405, 'method not allowed');
+        }
+    }
+} catch (PDOException $e) {
+    if ($e->getCode() === '23000') fail(409, 'there is already a ' . ($isScreen ? 'screen' : 'group') . " called \"$name\"");
+    throw $e;
+}
+echo json_encode(['groups' => card_groups_list(), 'screens' => screens_list()]);
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/api/history.php")"
@@ -4000,7 +4426,7 @@ cat > "$APP_DIR/api/host.php" <<'WEBMON_FILE_EOF'
 // DELETE ?id=N                                     -> remove the host
 // PATCH  ?id=N {name: "..."}                       -> rename the host
 // PATCH  ?id=N {mutedUntil: ms|null, muteReason}   -> mute / unmute alerts
-// PATCH  ?id=N {device?, os?, community?, bwExempt?, locationId?} -> host settings
+// PATCH  ?id=N {device?, os?, community?, bwExempt?, locationId?, groupIds?} -> host settings
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/devicescan.php';
@@ -4084,6 +4510,20 @@ if ($method === 'PATCH') {
         }
         db()->prepare('UPDATE hosts SET location_id = ? WHERE id = ?')->execute([$loc, $id]);
         $out['locationId'] = $loc;
+    }
+    if (array_key_exists('groupIds', $input)) {
+        $want = array_values(array_unique(array_filter(array_map('intval', (array) $input['groupIds']))));
+        $known = array_map('intval', db()->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN));
+        if (array_diff($want, $known)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'unknown group']);
+            exit;
+        }
+        db()->prepare('DELETE FROM host_group_members WHERE host_id = ?')->execute([$id]);
+        $ins = db()->prepare('INSERT INTO host_group_members (host_id, group_id) VALUES (?, ?)');
+        foreach ($want as $g) $ins->execute([$id, $g]);
+        sort($want);
+        $out['groupIds'] = $want;
     }
     if (array_key_exists('bwExempt', $input)) {
         db()->prepare('UPDATE hosts SET bw_exempt = ? WHERE id = ?')->execute([$input['bwExempt'] ? 1 : 0, $id]);
@@ -4201,7 +4641,7 @@ cat > "$APP_DIR/api/jobs.php" <<'WEBMON_FILE_EOF'
 //   POST {hostIds: [], type, params}  -> queue jobs (admins)
 //        -> {created: [ids], skipped: [{hostId, host, reason}]}
 //   DELETE ?id=N        -> cancel a queued job (admins)
-require_once __DIR__ . '/../includes/jobs.php';
+require_once __DIR__ . '/../includes/schedules.php';   // jobs, change records
 require_once __DIR__ . '/../includes/auth.php';
 header('Content-Type: application/json');
 $me = require_api_auth_admin_writes();
@@ -4253,7 +4693,10 @@ if ($method === 'POST') {
         echo json_encode(['error' => 'choose at least one host']);
         exit;
     }
-    echo json_encode(create_jobs($hostIds, $type, (array) ($input['params'] ?? []), $me['id']));
+    $params = (array) ($input['params'] ?? []);
+    $res = create_jobs($hostIds, $type, $params, $me['id']);
+    $res['change'] = change_record_manual($res, $type, $params, $me, job_label($type, job_params($type, $params)));
+    echo json_encode($res);
     exit;
 }
 
@@ -4847,10 +5290,10 @@ if ($method === 'POST' && !$id) {
     } catch (InvalidArgumentException $e) {
         fail(400, $e->getMessage());
     }
-    $pdo->prepare('INSERT INTO update_schedules (name, enabled, job_type, params, days, at_time, targets, host_ids, created_by, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    $pdo->prepare('INSERT INTO update_schedules (name, enabled, job_type, params, days, at_time, targets, host_ids, group_ids, created_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([$f['name'], $f['enabled'], $f['job_type'], $f['params'], $f['days'], $f['at_time'],
-                   $f['targets'], $f['host_ids'], $me['id'], now_ms()]);
+                   $f['targets'], $f['host_ids'], $f['group_ids'], $me['id'], now_ms()]);
     $newId = (int) $pdo->lastInsertId();
     skip_past_occurrence($newId);
     http_response_code(201);
@@ -4864,7 +5307,7 @@ $sched = $stmt->fetch();
 if (!$sched) fail(404, 'Schedule not found.');
 
 if ($method === 'POST' && !empty($_GET['run'])) {
-    echo json_encode(run_schedule($sched, true));
+    echo json_encode(run_schedule($sched, true, null, $me));
     exit;
 }
 
@@ -4874,15 +5317,15 @@ if ($method === 'PATCH') {
         $f = schedule_fields(array_merge([
             'name' => $current['name'], 'jobType' => $current['jobType'], 'params' => $current['params'],
             'days' => $current['days'], 'atTime' => $current['atTime'], 'targets' => $current['targets'],
-            'hostIds' => $current['hostIds'], 'enabled' => $current['enabled'],
+            'hostIds' => $current['hostIds'], 'groupIds' => $current['groupIds'], 'enabled' => $current['enabled'],
         ], $input));
     } catch (InvalidArgumentException $e) {
         fail(400, $e->getMessage());
     }
     $pdo->prepare('UPDATE update_schedules SET name = ?, enabled = ?, job_type = ?, params = ?, days = ?, at_time = ?,
-                   targets = ?, host_ids = ? WHERE id = ?')
+                   targets = ?, host_ids = ?, group_ids = ? WHERE id = ?')
         ->execute([$f['name'], $f['enabled'], $f['job_type'], $f['params'], $f['days'], $f['at_time'],
-                   $f['targets'], $f['host_ids'], $id]);
+                   $f['targets'], $f['host_ids'], $f['group_ids'], $id]);
     skip_past_occurrence($id);
     echo json_encode(['ok' => true]);
     exit;
@@ -4910,7 +5353,7 @@ cat > "$APP_DIR/api/services.php" <<'WEBMON_FILE_EOF'
 //   POST ?id=ID&action=check     -> check now (network checks); admins
 //   POST ?id=ID&action=restart   -> restart a watched agent service (agent job); admins
 require_once __DIR__ . '/../includes/services.php';
-require_once __DIR__ . '/../includes/jobs.php';
+require_once __DIR__ . '/../includes/schedules.php';   // jobs, change records
 require_once __DIR__ . '/../includes/auth.php';
 header('Content-Type: application/json');
 $user = require_api_auth_admin_writes();
@@ -4965,6 +5408,7 @@ if ($method === 'POST' && $id && ($_GET['action'] ?? '') === 'restart') {
     }
     $r = create_jobs([(int) $s['host_id']], 'service_restart', ['service' => $s['target']], isset($user['id']) ? (int) $user['id'] : null);
     if (!$r['created']) fail(409, $r['skipped'][0]['reason'] ?? 'Could not queue the restart.');
+    change_record_manual($r, 'service_restart', ['service' => $s['target']], $user ?? null, "Restart {$s['target']} ({$s['name']})");
     echo json_encode(['ok' => true, 'jobId' => $r['created'][0]]);
     exit;
 }
@@ -5596,6 +6040,10 @@ let subnetNames = {};
 try { subnetNames = JSON.parse(document.querySelector('meta[name="subnet-names"]')?.content || '{}'); } catch (e) { /* none */ }
 let locationNames = {};   // id -> name (Settings -> Locations)
 try { locationNames = JSON.parse(document.querySelector('meta[name="locations"]')?.content || '{}'); } catch (e) { /* none */ }
+let groupNames = {};      // id -> name (Settings -> Groups)
+try { groupNames = JSON.parse(document.querySelector('meta[name="card-groups"]')?.content || '{}'); } catch (e) { /* none */ }
+let screens = [];         // [{id, name, groupIds}] (Settings -> Groups -> Screens)
+try { screens = JSON.parse(document.querySelector('meta[name="screens"]')?.content || '[]'); } catch (e) { /* none */ }
 let subnetGateways = {};
 try { subnetGateways = JSON.parse(document.querySelector('meta[name="subnet-gateways"]')?.content || '{}'); } catch (e) { /* none */ }
 const isGateway = h => subnetGateways[subnetOf(h.ip)] === h.ip;
@@ -5716,6 +6164,7 @@ document.addEventListener('keydown', e => {
 function matchesSearch(h) {
   if (!searchText) return true;
   const hay = [h.name, h.ip, h.vendor, h.device, DEVICE_LABELS[h.device], OS_LABELS[h.os], h.locationId && locationNames[h.locationId],
+    ...(h.groupIds || []).map(g => groupNames[g]),
     h.agent && h.agent.os, h.deviceInfo && JSON.stringify(h.deviceInfo)].filter(Boolean).join(' ').toLowerCase();
   return searchText.split(/\s+/).every(t => hay.includes(t));
 }
@@ -5772,9 +6221,41 @@ document.getElementById('kpis').addEventListener('click', e => {
   document.querySelector(`#host-tabs .tab-btn[data-tab="${k}"]`)?.click();
 });
 
+// ---- Screens: show only the groups picked for a screen ----
+// Started from ?screen=N (wall displays), else the last one picked in this browser.
+let activeScreenId = (() => {
+  const fromUrl = new URLSearchParams(location.search).get('screen');
+  if (fromUrl !== null) return Number(fromUrl) || null;
+  try { return Number(localStorage.getItem('wm-screen')) || null; } catch (e) { return null; }
+})();
+const activeScreen = () => screens.find(sc => sc.id === activeScreenId) || null;
+const screenSelect = document.getElementById('screen-select');
+
+function renderScreenSelect() {
+  const pick = document.getElementById('screen-pick');
+  if (activeScreenId && !activeScreen()) activeScreenId = null;
+  pick.classList.toggle('hidden', !screens.length);
+  pick.classList.toggle('active', !!activeScreenId);
+  screenSelect.innerHTML = '<option value="">All cards</option>'
+    + screens.map(sc => `<option value="${sc.id}">${escapeHtml(sc.name)}</option>`).join('');
+  screenSelect.value = activeScreenId ? String(activeScreenId) : '';
+}
+
+screenSelect.addEventListener('change', () => {
+  activeScreenId = Number(screenSelect.value) || null;
+  try { activeScreenId ? localStorage.setItem('wm-screen', activeScreenId) : localStorage.removeItem('wm-screen'); } catch (e) { /* this page only */ }
+  const url = new URL(location.href);
+  if (activeScreenId) url.searchParams.set('screen', activeScreenId); else url.searchParams.delete('screen');
+  history.replaceState(null, '', url);
+  render();
+});
+
 function render() {
   renderSubnetTabs();
-  const inSubnet = [...hostsById.values()].filter(h => !activeSubnet || subnetOf(h.ip) === activeSubnet);
+  renderScreenSelect();
+  const screen = activeScreen();
+  const inSubnet = [...hostsById.values()].filter(h => (!activeSubnet || subnetOf(h.ip) === activeSubnet)
+    && (!screen || (h.groupIds || []).some(g => screen.groupIds.includes(g))));
   renderKpis(inSubnet);
   const hosts = inSubnet.filter(matchesSearch);
 
@@ -5789,7 +6270,9 @@ function render() {
   }
 
   if (!hosts.length) {
-    grid.innerHTML = searchText ? `<div class="empty">Nothing matches “${escapeHtml(searchInput.value.trim())}”.</div>` : activeSubnet ? `<div class="empty">No hosts in ${escapeHtml(activeSubnet)}.</div>`
+    grid.innerHTML = searchText ? `<div class="empty">Nothing matches “${escapeHtml(searchInput.value.trim())}”.</div>`
+      : screen ? `<div class="empty">No cards in the groups on the “${escapeHtml(screen.name)}” screen${activeSubnet ? ` in ${escapeHtml(activeSubnet)}` : ''}.${screen.groupIds.length ? '' : ' Pick its groups in Settings → Groups.'}</div>`
+      : activeSubnet ? `<div class="empty">No hosts in ${escapeHtml(activeSubnet)}.</div>`
       : '<div class="empty">No hosts yet — add one in Settings → Add hosts to start monitoring.</div>';
     return;
   }
@@ -5800,6 +6283,14 @@ function render() {
     return;
   }
 
+  if (screen) {
+    renderByGroup(filtered, screen.groupIds);
+    return;
+  }
+  if (groupMode === 'group') {
+    renderByGroup(filtered);
+    return;
+  }
   if (groupMode === 'host') {   // topology.js
     renderByHost(filtered);
     return;
@@ -5911,6 +6402,39 @@ function renderByLocation(hosts) {
   }
 }
 
+/**
+ * Host view by card group (Settings -> Groups), then cards with no group. A card
+ * in several groups shows in each of them. With `order` (a screen's group ids),
+ * only those groups, in that order.
+ */
+function renderByGroup(hosts, order = null) {
+  grid.innerHTML = '';
+  const byGroup = new Map();
+  for (const h of hosts) {
+    const inGroups = (h.groupIds || []).filter(g => groupNames[g]);
+    for (const key of inGroups.length ? inGroups : [0]) {
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key).push(h);
+    }
+  }
+  const keys = order ? order.filter(id => byGroup.has(id))
+    : [...byGroup.keys()].filter(k => k).sort((a, b) => groupNames[a].localeCompare(groupNames[b]));
+  if (!order && byGroup.has(0)) keys.push(0);
+  for (const key of keys) {
+    const list = byGroup.get(key).sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip));
+    const section = document.createElement('div');
+    section.className = 'network-group';
+    section.innerHTML = `<h3 class="network-group-title">${key ? escapeHtml(groupNames[key])
+      : `No group <span class="muted small">— set one in a card's Edit${IS_ADMIN && !Object.keys(groupNames).length ? ' (add groups in Settings → Groups)' : ''}</span>`}
+      <span class="network-group-count">${list.length}</span></h3>`;
+    const inner = document.createElement('div');
+    inner.className = 'grid';
+    for (const h of list) inner.appendChild(renderCard(h));
+    section.appendChild(inner);
+    grid.appendChild(section);
+  }
+}
+
 function renderCard(host) {
   const card = document.createElement('div');
   const alertSev = host.mutedUntil ? null : worstAlertFor(host.id);
@@ -5933,7 +6457,7 @@ function renderCard(host) {
       <span class="card-icon ${statusClass(host)}" title="${escapeHtml(DEVICE_LABELS[host.device] || host.device || '')}">${cardIcon(host)}</span>
       <div class="card-title">
         <span class="card-name${host.name === host.ip ? ' unnamed' : ''}">${host.name === host.ip ? 'Unnamed' : escapeHtml(host.name)}</span>
-        <div class="card-ip"><span class="mono">${escapeHtml(host.ip)}</span>${OS_SHORT[host.os] ? `<span class="card-os">${OS_SHORT[host.os]}</span>` : ''}${host.locationId && locationNames[host.locationId] ? `<span class="card-loc">${escapeHtml(locationNames[host.locationId])}</span>` : ''}</div>
+        <div class="card-ip"><span class="mono">${escapeHtml(host.ip)}</span>${OS_SHORT[host.os] ? `<span class="card-os">${OS_SHORT[host.os]}</span>` : ''}${host.locationId && locationNames[host.locationId] ? `<span class="card-loc">${escapeHtml(locationNames[host.locationId])}</span>` : ''}${(host.groupIds || []).filter(g => groupNames[g]).length ? `<span class="card-grp">${escapeHtml(host.groupIds.filter(g => groupNames[g]).map(g => groupNames[g]).join(', '))}</span>` : ''}</div>
       </div>
       <span${age && age !== 'recent' && host.lastSeenAt ? ` title="Last seen ${escapeHtml(new Date(host.lastSeenAt).toLocaleString())}"` : ''}>${statusBadge(host)}</span>
     </div>
@@ -7507,6 +8031,294 @@ v+xbWO1JsJlagrcdBP6omlrwBuj1D15RqR+oO2QAsUAXatAAaM0XqgewlUguA3wc5EsgjWwKgQe4
 hcnAc3xGBrBHBuOHYDvDYjk7GcGWc7L6CjvwOMNIAF5hEjcAVYE8oBI1GQYckO+ZAezlC5oA56lX
 yAcZqJrIQ+CtXHWOvx+4L9g3xWYH36FAPU1BzcrxDYoPwz8liP/O/wEF5IS/Sw7VOQAAAABJRU5E
 rkJggg==
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/assets/changes.js")"
+cat > "$APP_DIR/assets/changes.js" <<'WEBMON_FILE_EOF'
+// Change management: change records (Updates view), their settings
+// (Settings -> Change management) and the audit log (Reports -> Audit log).
+// Uses api(), escapeHtml(), IS_ADMIN from app.js; jsonApi(), setMsg() from settings.js.
+
+const CHANGE_BADGE = {
+  planned: 'info', pending_approval: 'warn', approved: 'ok', rejected: 'bad', in_progress: 'info',
+  completed: 'ok', partial: 'warn', failed: 'bad', skipped: 'muted', cancelled: 'muted',
+};
+let changesFilter = 'open';
+let changeSettings = null;
+const openChanges = new Set();   // expanded rows, kept across refreshes
+
+function fmtChangeTime(ms) {
+  return ms ? new Date(ms).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+}
+
+function changeBadge(c) {
+  return `<span class="chg-badge chg-${CHANGE_BADGE[c.status] || 'muted'}">${escapeHtml(c.statusLabel)}</span>`;
+}
+
+// ---- Updates -> Change records ----
+
+async function loadChanges() {
+  const box = document.getElementById('changes-table');
+  if (!box) return;
+  try {
+    const resp = await api(`api/changes.php?status=${changesFilter}&limit=${changesFilter === 'open' ? 200 : 100}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not load change records');
+    changeSettings = data.settings;
+    const pend = document.getElementById('changes-pending');
+    pend.textContent = data.pendingApproval ? `${data.pendingApproval} awaiting approval` : '';
+    pend.classList.toggle('warn-text', !!data.pendingApproval);
+    document.getElementById('changes-hint').innerHTML = `${data.settings.require_approval
+      ? '<strong>Approval is on:</strong> scheduled windows run only once approved.' : 'Scheduled windows run unless rejected.'}
+      ${data.settings.lead_hours ? `Records are raised ${data.settings.lead_hours} h before each window.` : 'Records are raised when each window runs.'}
+      ${data.emailReady ? '' : IS_ADMIN ? ' <span class="warn-text">Change emails are off: set a change list and an email channel in Settings → Change management.</span>' : ''}`;
+    renderChanges(data.changes);
+  } catch (err) {
+    box.innerHTML = `<div class="switch-info-status details-error">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderChanges(list) {
+  const box = document.getElementById('changes-table');
+  if (!list.length) {
+    box.innerHTML = `<div class="switch-info-status">${changesFilter === 'open' ? 'No open changes.' : 'No change records yet.'}
+      Each update window and manual update, reboot or agent upgrade gets one.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="details-table-wrap updates-wrap"><table class="switch-info-table chg-table">
+    <thead><tr><th>Change</th><th>What</th><th>When</th><th>Hosts</th><th>Status</th><th>Requested / decided</th><th></th></tr></thead>
+    <tbody>${list.map(c => `
+      <tr data-id="${c.id}" class="chg-row">
+        <td class="nowrap"><button type="button" class="link-btn chg-toggle" aria-expanded="${openChanges.has(c.id)}">${escapeHtml(c.number)}</button></td>
+        <td><strong>${escapeHtml(c.title)}</strong><div class="muted small">${escapeHtml(c.action)}${c.packageCount ? ` · ${c.packageCount} package${c.packageCount === 1 ? '' : 's'}` : ''}</div></td>
+        <td class="nowrap small">${escapeHtml(fmtChangeTime(c.plannedAt))}<div class="muted">${c.source === 'schedule' ? 'scheduled' : 'manual'}</div></td>
+        <td class="wrap small">${escapeHtml(c.hosts.slice(0, 4).join(', '))}${c.hosts.length > 4 ? ` +${c.hosts.length - 4}` : ''}</td>
+        <td>${changeBadge(c)}</td>
+        <td class="small">${escapeHtml(c.requestedBy || 'WebMonitor')}${c.decidedBy ? `<div class="muted">${c.status === 'rejected' ? 'rejected' : 'approved'} by ${escapeHtml(c.decidedBy)}</div>` : ''}</td>
+        <td class="row-actions">${IS_ADMIN && c.status === 'pending_approval' ? '<button type="button" class="section-btn chg-approve">Approve</button>' : ''}
+          ${IS_ADMIN && ['planned', 'pending_approval', 'approved'].includes(c.status) ? '<button type="button" class="section-btn danger chg-reject">Reject</button>' : ''}</td>
+      </tr>
+      <tr class="chg-detail ${openChanges.has(c.id) ? '' : 'hidden'}" data-detail="${c.id}"><td colspan="7"><div class="chg-detail-body">Loading…</div></td></tr>`).join('')}
+    </tbody></table></div>`;
+  box.querySelectorAll('tr.chg-row').forEach(tr => {
+    const id = +tr.dataset.id;
+    tr.querySelector('.chg-toggle').addEventListener('click', () => toggleChange(id));
+    tr.querySelector('.chg-approve')?.addEventListener('click', () => decideChange(id, 'approve'));
+    tr.querySelector('.chg-reject')?.addEventListener('click', () => decideChange(id, 'reject'));
+    if (openChanges.has(id)) loadChangeDetail(id);
+  });
+}
+
+function toggleChange(id) {
+  const row = document.querySelector(`#changes-table tr[data-detail="${id}"]`);
+  const open = row.classList.toggle('hidden') === false;
+  document.querySelector(`#changes-table tr[data-id="${id}"] .chg-toggle`).setAttribute('aria-expanded', open);
+  if (open) { openChanges.add(id); loadChangeDetail(id); } else openChanges.delete(id);
+}
+
+async function loadChangeDetail(id) {
+  const body = document.querySelector(`#changes-table tr[data-detail="${id}"] .chg-detail-body`);
+  if (!body) return;
+  try {
+    const resp = await api(`api/changes.php?id=${id}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not load the change');
+    body.innerHTML = renderChangeDetail(data.change);
+  } catch (err) {
+    body.innerHTML = `<span class="details-error">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+function pkgLine(p) {
+  return `${escapeHtml(p.name)}${p.new ? ` <span class="muted">${p.current ? `${escapeHtml(p.current)} → ` : ''}${escapeHtml(p.new)}</span>` : ''}${
+    p.kb ? ` <span class="muted">${escapeHtml(p.kb)}</span>` : ''}${p.security ? ' <span class="chg-badge chg-warn">security</span>' : ''}`;
+}
+
+function renderChangeDetail(c) {
+  const facts = [
+    ['Status', changeBadge(c)],
+    ['Action', escapeHtml(c.action)],
+    [c.source === 'schedule' ? 'Window' : 'Started', escapeHtml(fmtChangeTime(c.plannedAt))],
+    ['Requested by', escapeHtml(c.requestedBy || 'WebMonitor') + (c.source === 'schedule' ? ' (schedule)' : ' (manual)')],
+    c.decidedBy && ['Decision', `${escapeHtml(c.status === 'rejected' ? 'Rejected' : 'Approved')} by ${escapeHtml(c.decidedBy)} · ${escapeHtml(fmtChangeTime(c.decidedAt))}${
+      c.decisionNote ? `<div class="muted">${escapeHtml(c.decisionNote)}</div>` : ''}`],
+    c.finishedAt && ['Finished', escapeHtml(fmtChangeTime(c.finishedAt))],
+    ['Emails', `${c.noticeSentAt ? `notice ${escapeHtml(fmtChangeTime(c.noticeSentAt))}` : 'no notice sent'}${c.reportSentAt ? ` · report ${escapeHtml(fmtChangeTime(c.reportSentAt))}` : ''}`],
+  ].filter(Boolean);
+  const hostIds = [...new Set([...Object.keys(c.planned || {}), ...Object.keys(c.outcome || {})])];
+  const hosts = hostIds.map(hid => {
+    const p = (c.planned || {})[hid] || {};
+    const o = (c.outcome || {})[hid];
+    const v = (c.verification || {})[hid];
+    const pk = Array.isArray(p.packages) ? p.packages : null;
+    return `<details class="chg-host" ${hostIds.length === 1 ? 'open' : ''}><summary><strong>${escapeHtml((o && o.host) || p.host || '#' + hid)}</strong>
+        ${o ? `<span class="port-status ${o.status === 'succeeded' ? 'up' : 'down'}">${escapeHtml(o.status)}</span> <span class="muted small">${escapeHtml(o.summary || '')}</span>` : ''}
+        ${pk ? `<span class="muted small">· ${pk.length} planned package${pk.length === 1 ? '' : 's'}</span>` : 'packages' in p ? '<span class="muted small">· no update inventory when planned</span>' : ''}
+        ${v ? `<span class="small ${v.stillPending.length ? 'warn-text' : 'ok-text'}">· ${v.stillPending.length ? `${v.stillPending.length} still pending` : 'verified: none still pending'}</span>` : ''}
+      </summary>
+      ${pk && pk.length ? `<ul class="chg-pkgs">${pk.map(x => `<li>${pkgLine(x)}${v && v.stillPending.includes(x.name) ? ' <span class="warn-text small">still pending</span>' : ''}</li>`).join('')}</ul>` : ''}
+      ${o && o.output ? `<details class="chg-output"><summary class="small">Job #${o.jobId} output${o.exitCode != null ? ` · exit ${o.exitCode}` : ''}${
+        o.outputSha256 ? ` · <span class="mono" title="SHA-256 of the full output">${escapeHtml(o.outputSha256.slice(0, 16))}…</span>` : ''}</summary><pre class="job-output">${escapeHtml(o.output)}</pre></details>` : ''}
+    </details>`;
+  }).join('');
+  const skipped = (c.skipped || []).length ? `<h4>Skipped</h4><ul class="chg-pkgs">${c.skipped.map(s => `<li>${escapeHtml(s.host)}: <span class="muted">${escapeHtml(s.reason)}</span></li>`).join('')}</ul>` : '';
+  const history = (c.history || []).length ? `<h4>History</h4><ol class="chg-history">${c.history.map(h =>
+    `<li><span class="muted small">${escapeHtml(new Date(h.ts).toLocaleString())}</span> ${escapeHtml(h.summary)}${h.username ? ` <span class="muted small">— ${escapeHtml(h.username)}</span>` : ''}</li>`).join('')}</ol>` : '';
+  return `<dl class="details-grid chg-facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <h4>Hosts</h4>${hosts || '<p class="muted small">No hosts.</p>'}${skipped}${history}`;
+}
+
+async function decideChange(id, decision) {
+  const verb = decision === 'approve' ? 'Approve' : 'Reject';
+  const note = prompt(decision === 'approve' ? 'Approve this change? Optional note:' : 'Reject this change — it will not run. Reason (required):', '');
+  if (note === null) return;
+  try {
+    await jsonApi(`api/changes.php?id=${id}&decision=${decision}`, 'POST', { note });   // settings.js
+    openChanges.add(id);
+    loadChanges();
+  } catch (err) {
+    alert(`${verb}: ${err.message}`);
+  }
+}
+
+document.querySelectorAll('[data-changes]').forEach(b => b.addEventListener('click', () => {
+  changesFilter = b.dataset.changes;
+  document.querySelectorAll('[data-changes]').forEach(x => x.classList.toggle('active', x === b));
+  loadChanges();
+}));
+document.getElementById('changes-csv').addEventListener('click', () => {
+  location.href = `api/changes.php?format=csv&status=${changesFilter}`;
+});
+
+// ---- Settings -> Change management ----
+
+async function loadChangeSettings() {
+  try {
+    const data = await jsonApi('api/changes.php?what=settings', 'GET');
+    const s = data.settings;
+    document.getElementById('cm-recipients').value = s.recipients;
+    document.getElementById('cm-lead').value = s.lead_hours;
+    document.getElementById('cm-approval').checked = s.require_approval;
+    document.getElementById('cm-manual').checked = s.notify_manual;
+    showChangeEmailWarning(data.emailReady, s.recipients);
+  } catch (err) {
+    setMsg(document.getElementById('cm-msg'), err.message, false);
+  }
+}
+
+function showChangeEmailWarning(ready, recipients) {
+  document.getElementById('cm-email-warning').innerHTML = ready ? ''
+    : `<p class="hint warn-text">${recipients ? 'Change emails need an enabled email channel: add one under Notifications (its SMTP settings are used; its To address is not).'
+      : 'No change list yet — change records and the audit log still work, but no change emails are sent.'}</p>`;
+}
+
+document.getElementById('cm-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = document.getElementById('cm-msg');
+  try {
+    const data = await jsonApi('api/changes.php?what=settings', 'PUT', {
+      recipients: document.getElementById('cm-recipients').value,
+      lead_hours: Number(document.getElementById('cm-lead').value || 0),
+      require_approval: document.getElementById('cm-approval').checked,
+      notify_manual: document.getElementById('cm-manual').checked,
+    });
+    document.getElementById('cm-recipients').value = data.settings.recipients;
+    showChangeEmailWarning(data.emailReady, data.settings.recipients);
+    setMsg(msg, 'Saved');
+  } catch (err) {
+    setMsg(msg, err.message, false);
+  }
+});
+
+document.getElementById('cm-test').addEventListener('click', async () => {
+  const msg = document.getElementById('cm-msg');
+  setMsg(msg, 'Sending…');
+  try {
+    await jsonApi('api/changes.php?what=test', 'POST', {});
+    setMsg(msg, 'Test email sent to the change list (save first if you just changed it)');
+  } catch (err) {
+    setMsg(msg, err.message, false);
+  }
+});
+
+// ---- Reports -> Audit log ----
+
+let auditEntries = [];
+let auditTimer = null;
+
+function auditQuery() {
+  const p = new URLSearchParams();
+  const v = id => document.getElementById(id).value.trim();
+  if (v('audit-q')) p.set('q', v('audit-q'));
+  if (v('audit-user')) p.set('user', v('audit-user'));
+  if (v('audit-action')) p.set('action', v('audit-action'));
+  if (v('audit-outcome')) p.set('outcome', v('audit-outcome'));
+  if (v('audit-from')) p.set('from', new Date(v('audit-from') + 'T00:00:00').getTime());
+  if (v('audit-to')) p.set('to', new Date(v('audit-to') + 'T23:59:59.999').getTime());
+  return p;
+}
+
+async function loadAuditLog(more = false) {
+  const box = document.getElementById('audit-body');
+  const p = auditQuery();
+  p.set('limit', 100);
+  if (more && auditEntries.length) p.set('before', auditEntries[auditEntries.length - 1].id);
+  if (!more) box.innerHTML = '<div class="switch-info-status">Loading…</div>';
+  try {
+    const resp = await api('api/audit.php?' + p);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not load the audit log');
+    auditEntries = more ? auditEntries.concat(data.entries) : data.entries;
+    const sel = document.getElementById('audit-user');
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">Anyone</option><option value="(system)">WebMonitor (automatic)</option>'
+      + data.users.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+    sel.value = keep;
+    renderAuditLog(data.more);
+  } catch (err) {
+    box.innerHTML = `<div class="switch-info-status details-error">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderAuditLog(more) {
+  const box = document.getElementById('audit-body');
+  document.getElementById('audit-meta').textContent = `${auditEntries.length}${more ? '+' : ''} entr${auditEntries.length === 1 ? 'y' : 'ies'} shown, newest first`;
+  if (!auditEntries.length) { box.innerHTML = '<div class="switch-info-status">Nothing matches.</div>'; return; }
+  box.innerHTML = `<div class="details-table-wrap"><table class="switch-info-table audit-table">
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Outcome</th></tr></thead>
+    <tbody>${auditEntries.map(e => `
+      <tr class="audit-${e.outcome}">
+        <td class="nowrap small">${escapeHtml(new Date(e.ts).toLocaleString())}</td>
+        <td class="small">${e.username ? escapeHtml(e.username) : '<span class="muted">WebMonitor</span>'}${e.ip ? `<div class="muted mono">${escapeHtml(e.ip)}</div>` : ''}</td>
+        <td>${escapeHtml(e.summary)}<div class="muted small mono">${escapeHtml(e.action)}${e.target ? ` · ${escapeHtml(e.target)}` : ''}</div>
+          ${e.details ? `<details class="audit-details"><summary class="small">Details</summary><pre>${escapeHtml(JSON.stringify(e.details, null, 2))}</pre></details>` : ''}</td>
+        <td><span class="chg-badge chg-${e.outcome === 'ok' ? 'ok' : e.outcome === 'denied' ? 'warn' : 'bad'}">${escapeHtml(e.outcome)}</span></td>
+      </tr>`).join('')}</tbody></table></div>
+    ${more ? '<button type="button" class="section-btn" id="audit-more">Load older entries</button>' : ''}`;
+  document.getElementById('audit-more')?.addEventListener('click', () => loadAuditLog(true));
+}
+
+document.getElementById('audit-filters').addEventListener('input', () => {
+  clearTimeout(auditTimer);
+  auditTimer = setTimeout(() => loadAuditLog(), 350);
+});
+document.getElementById('audit-filters').addEventListener('submit', e => { e.preventDefault(); loadAuditLog(); });
+document.getElementById('audit-csv').addEventListener('click', () => {
+  location.href = 'api/audit.php?format=csv&' + auditQuery();
+});
+document.getElementById('audit-verify').addEventListener('click', async () => {
+  const meta = document.getElementById('audit-meta');
+  meta.textContent = 'Checking the hash chain…';
+  try {
+    const resp = await api('api/audit.php?verify=1');
+    const r = await resp.json();
+    if (!resp.ok) throw new Error(r.error || 'Check failed');
+    meta.innerHTML = r.ok ? `<span class="ok-text">✓ Intact: all ${r.checked} entries chain correctly.</span>`
+      : `<span class="crit-text">✗ Broken at entry #${r.brokenAt}: ${escapeHtml(r.reason)}.</span>`;
+  } catch (err) {
+    meta.textContent = err.message;
+  }
+});
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/assets/configbackup.js")"
@@ -9186,6 +9998,10 @@ function renderHostEditor(host) {
           <option value="">— none —</option>
           ${Object.entries(locationNames).map(([id, n]) => `<option value="${id}" ${Number(id) === host.locationId ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')}
         </select> ${IS_ADMIN ? '<span class="muted small">(manage in Settings → Locations)</span>' : ''}</label>
+      <div><div class="field-label">Groups ${IS_ADMIN ? '<span class="muted small">(manage in Settings → Groups)</span>' : ''}</div>
+        <div class="choice-group" id="he-groups">${Object.keys(groupNames).length ? Object.entries(groupNames).map(([id, n]) =>
+          `<label><input type="checkbox" value="${id}" ${(host.groupIds || []).includes(Number(id)) ? 'checked' : ''} /> ${escapeHtml(n)}</label>`).join('')
+          : '<span class="muted small">No groups yet.</span>'}</div></div>
       <label class="check"><input type="checkbox" id="he-bw-exempt" ${host.bwExempt ? 'checked' : ''} />
         Expected high traffic — no bandwidth alerts for this host (e.g. a download or backup server)</label>
       <p class="hint">Set the device type to <strong>NAS</strong> for QNAP storage: WebMonitor then reads its volumes,
@@ -9208,6 +10024,8 @@ function renderHostEditor(host) {
     }
     const loc = document.getElementById('he-location').value;
     if ((loc === '' ? null : Number(loc)) !== (host.locationId ?? null)) changes.locationId = loc === '' ? null : Number(loc);
+    const groupIds = [...document.querySelectorAll('#he-groups input:checked')].map(cb => Number(cb.value)).sort((a, b) => a - b);
+    if (groupIds.join() !== [...(host.groupIds || [])].sort((a, b) => a - b).join()) changes.groupIds = groupIds;
     const bw = document.getElementById('he-bw-exempt').checked;
     if (bw !== !!host.bwExempt) changes.bwExempt = bw;
     const msg = document.getElementById('he-msg');
@@ -10736,6 +11554,7 @@ function showReport(name) {
   if (name === 'topology') loadTopologyReport();
   if (name === 'devices') loadDevicesReport();   // devices.js
   if (name === 'traffic') loadTrafficReport();   // traffic.js
+  if (name === 'audit') loadAuditLog();   // changes.js
 }
 document.querySelectorAll('.report-picker [data-report]').forEach(b => b.addEventListener('click', () => showReport(b.dataset.report)));
 
@@ -11282,8 +12101,40 @@ cat > "$APP_DIR/assets/settings.js" <<'WEBMON_FILE_EOF'
 // Uses api(), escapeHtml(), fmtAgoDate() and IS_ADMIN from app.js.
 
 const settingsBackdrop = document.getElementById('settings-backdrop');
-const settingsTabs = document.querySelectorAll('.settings-tabs .tab-btn');
+const settingsTabs = document.querySelectorAll('.settings-nav-item');
 const settingsPanels = document.querySelectorAll('.settings-panel');
+
+// Each panel's blocks become cards: a block starts at each heading (h3) or
+// nested section (an "Add …" details stays with the block above it). A first heading that only repeats the section's name is
+// dropped, since the window's header already shows it.
+settingsPanels.forEach(panel => {
+  const label = document.querySelector(`.settings-nav-item[data-panel="${panel.dataset.panel}"]`)?.textContent.trim().toLowerCase();
+  const first = panel.firstElementChild;
+  if (first && first.tagName === 'H3' && first.textContent.trim().toLowerCase() === label) first.remove();
+  let card = null;
+  for (const el of [...panel.children]) {
+    if (el.classList.contains('settings-raw') || el.classList.contains('settings-intro')) {   // laid out by hand
+      card = null;
+      continue;
+    }
+    if (el.tagName === 'SECTION') {
+      // A heading left on its own just above the section belongs inside it.
+      if (card && card.children.length === 1 && card.firstElementChild.tagName === 'H3') {
+        el.prepend(card.firstElementChild);
+        card.remove();
+      }
+      el.classList.add('settings-card');
+      card = null;
+      continue;
+    }
+    if (el.tagName === 'H3' || !card) {
+      card = document.createElement('div');
+      card.className = 'settings-card';
+      panel.insertBefore(card, el);
+    }
+    card.appendChild(el);
+  }
+});
 
 function openSettings(panel = 'account') {
   settingsBackdrop.classList.remove('hidden');
@@ -11298,11 +12149,18 @@ function showSettingsPanel(name) {
   if (!IS_ADMIN && !['account', 'display', 'schedules'].includes(name)) name = 'account';
   settingsTabs.forEach(b => b.classList.toggle('active', b.dataset.panel === name));
   settingsPanels.forEach(p => p.classList.toggle('hidden', p.dataset.panel !== name));
+  const tab = document.querySelector(`.settings-nav-item[data-panel="${name}"]`);
+  document.getElementById('settings-title').textContent = tab ? tab.textContent.trim() : 'Settings';
+  document.getElementById('settings-desc').textContent = tab ? tab.dataset.desc || '' : '';
+  document.getElementById('settings-body').scrollTop = 0;
+  tab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });   // phones: the strip of sections scrolls sideways
   if (name === 'users') loadUsers();
   if (name === 'notifications') loadNotifications();
   if (name === 'schedules') loadSchedules();   // updates.js
   if (name === 'subnets') loadSubnets();
   if (name === 'locations') loadLocations();
+  if (name === 'groups') loadGroups();
+  if (name === 'changes') loadChangeSettings();   // changes.js
   if (name === 'homeassistant') loadHomeAssistant();
 }
 
@@ -12016,6 +12874,85 @@ document.getElementById('location-form').addEventListener('submit', e => {
   locationRequest('POST', null, { name: input.value }).then(() => { input.value = ''; });
 });
 
+// ---- Groups and screens ----
+
+function applyGroups({ groups, screens: list }) {
+  groupNames = Object.fromEntries(groups.map(g => [g.id, g.name]));   // app.js: cards, the editor, screens
+  screens = list;
+  const box = document.getElementById('group-list');
+  box.innerHTML = groups.length ? `<table class="switch-info-table loc-table"><tbody>${groups.map(g => `
+      <tr data-id="${g.id}">
+        <td><input type="text" maxlength="60" value="${escapeHtml(g.name)}" aria-label="Group name" /></td>
+        <td class="muted small">${g.hosts} card${g.hosts === 1 ? '' : 's'}</td>
+        <td class="loc-actions"><button type="button" class="section-btn" data-act="save">Rename</button>
+          <button type="button" class="section-btn danger" data-act="del">Remove</button></td>
+      </tr>`).join('')}</tbody></table>`
+    : '<p class="muted">No groups yet.</p>';
+  box.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.dataset.id;
+    tr.querySelector('[data-act="save"]').addEventListener('click', () => groupRequest('group-msg', 'PATCH', `id=${id}`, { name: tr.querySelector('input').value }));
+    tr.querySelector('[data-act="del"]').addEventListener('click', () => {
+      const n = tr.querySelector('input').value;
+      if (confirm(`Remove the group "${n}"? It's taken off its cards, screens and update schedules (a schedule left with no groups is turned off).`)) groupRequest('group-msg', 'DELETE', `id=${id}`);
+    });
+  });
+
+  const sbox = document.getElementById('screen-list');
+  sbox.innerHTML = list.length ? list.map(sc => `
+      <div class="screen-block" data-id="${sc.id}">
+        <div class="screen-block-head">
+          <input type="text" maxlength="60" value="${escapeHtml(sc.name)}" aria-label="Screen name" />
+          <a class="muted small" href="?screen=${sc.id}" title="Link that opens straight to this screen">?screen=${sc.id}</a>
+          <button type="button" class="section-btn" data-act="save">Save</button>
+          <button type="button" class="section-btn danger" data-act="del">Remove</button>
+        </div>
+        <div class="screen-groups">${groups.length ? [...sc.groupIds.filter(id => groupNames[id]), ...groups.map(g => g.id).filter(id => !sc.groupIds.includes(id))]
+          .map(id => `<label><input type="checkbox" value="${id}" ${sc.groupIds.includes(id) ? 'checked' : ''} /> ${escapeHtml(groupNames[id])}</label>`).join('')
+          : '<span class="muted small">Add some groups above first.</span>'}</div>
+      </div>`).join('')
+    : '<p class="muted">No screens yet.</p>';
+  sbox.querySelectorAll('.screen-block').forEach(b => {
+    const id = b.dataset.id;
+    const picked = () => [...b.querySelectorAll('.screen-groups input:checked')].map(i => Number(i.value));
+    b.querySelector('[data-act="save"]').addEventListener('click', () =>
+      groupRequest('screen-msg', 'PATCH', `type=screen&id=${id}`, { name: b.querySelector('input[type=text]').value, groupIds: picked() }));
+    b.querySelector('[data-act="del"]').addEventListener('click', () => {
+      if (confirm(`Remove the screen "${b.querySelector('input[type=text]').value}"? The groups and cards stay.`)) groupRequest('screen-msg', 'DELETE', `type=screen&id=${id}`);
+    });
+  });
+  render();   // app.js
+}
+
+async function loadGroups() {
+  try { applyGroups(await jsonApi('api/groups.php', 'GET')); }
+  catch (err) { setMsg(document.getElementById('group-msg'), err.message, false); }
+}
+
+async function groupRequest(msgId, method, query, body) {
+  const msg = document.getElementById(msgId);
+  try {
+    applyGroups(await jsonApi(`api/groups.php${query ? `?${query}` : ''}`, method, body));
+    setMsg(document.getElementById(msgId), method === 'POST' ? 'Added' : method === 'DELETE' ? 'Removed' : 'Saved');
+    loadHosts().catch(() => {});
+  } catch (err) {
+    setMsg(msg, err.message, false);
+  }
+}
+
+document.getElementById('group-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('group-name');
+  if (!input.value.trim()) return;
+  groupRequest('group-msg', 'POST', '', { name: input.value }).then(() => { input.value = ''; });
+});
+
+document.getElementById('screen-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('screen-name');
+  if (!input.value.trim()) return;
+  groupRequest('screen-msg', 'POST', 'type=screen', { name: input.value, groupIds: [] }).then(() => { input.value = ''; });
+});
+
 // ---- Home Assistant ----
 
 function applyHa(s) {
@@ -12715,13 +13652,75 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
   .alert-msg { flex-basis: 100%; order: 3; }
 }
 
-/* Settings window */
-.settings-modal { max-width: 860px; }
-.settings-modal h2 { margin-top: 0; }
-.settings-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+/* Settings window: grouped sidebar, fixed-size window, a header with the
+   section's name, and the section's blocks as cards in a scrolling body. */
+.modal.settings-modal {
+  max-width: 1080px; width: 100%; height: min(780px, calc(100vh - 40px)); max-height: none;
+  padding: 0; overflow: hidden; display: grid; grid-template-columns: 232px minmax(0, 1fr);
+}
+.settings-side {
+  background: var(--panel-2); border-right: 1px solid var(--panel-border);
+  padding: 20px 12px; overflow-y: auto;
+}
+.settings-side-title { font-size: 1.05rem; margin: 2px 10px 16px; }
+.settings-nav { display: flex; flex-direction: column; gap: 14px; }
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-label {
+  font-size: 0.68rem; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); padding: 0 10px 4px;
+}
+.settings-nav-item {
+  text-align: left; background: none; border: none; border-radius: 7px; cursor: pointer;
+  padding: 7px 10px; font: inherit; font-size: 0.88rem; color: var(--text); opacity: 0.82;
+}
+.settings-nav-item:hover { background: color-mix(in srgb, var(--text) 6%, transparent); opacity: 1; }
+.settings-nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; opacity: 1; }
+.settings-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.settings-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 20px 24px 14px; border-bottom: 1px solid var(--panel-border);
+}
+.settings-head-title { margin: 0; font-size: 1.1rem; }
+.settings-head-desc { margin: 4px 0 0; color: var(--muted); font-size: 0.85rem; }
+.settings-head .modal-close { position: static; line-height: 1; padding: 2px 4px; border-radius: 6px; }
+.settings-head .modal-close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+.settings-body { flex: 1; overflow-y: auto; padding: 18px 24px 28px; }
 .settings-panel.hidden { display: none; }
-.settings-panel h3 { font-size: 0.95rem; margin: 18px 0 8px; }
-.settings-panel h3:first-child { margin-top: 4px; }
+.settings-panel { display: flex; flex-direction: column; gap: 14px; }
+.settings-card {
+  border: 1px solid var(--panel-border); border-radius: 12px; padding: 16px 18px; background: var(--panel);
+  display: flex; flex-direction: column; gap: 10px; margin: 0;
+}
+.settings-card > :first-child { margin-top: 0; }
+.settings-card > :last-child { margin-bottom: 0; }
+.settings-panel h3 { font-size: 0.95rem; margin: 0; }
+.settings-card h3 + .hint, .settings-card h3 + p { margin-top: -4px; }
+.settings-card .hint { max-width: 72ch; }
+.settings-card .settings-form { max-width: 620px; }
+.settings-head > div { text-align: left; }
+.settings-cards { max-width: none; gap: 14px; }
+.settings-intro { font-size: 0.85rem; }
+.settings-intro:empty, #cm-email-warning:empty { display: none; }
+.settings-card .check-hint, .settings-card label.check + .hint { margin-left: 24px; }
+.settings-card .num-unit input { width: 90px; }
+.settings-actions { padding-top: 2px; }
+.settings-card textarea {
+  background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
+  padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 0.9rem; resize: vertical;
+}
+@media (max-width: 760px) {
+  .modal.settings-modal { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); height: calc(100vh - 24px); }
+  .settings-side { border-right: none; border-bottom: 1px solid var(--panel-border); padding: 12px 12px 8px; }
+  .settings-side-title { display: none; }
+  .settings-nav { flex-direction: row; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .settings-nav-group { flex-direction: row; gap: 4px; }
+  .settings-nav-label { display: none; }
+  .settings-nav-item { white-space: nowrap; }
+  .settings-head { padding: 14px 16px 10px; }
+  .settings-body { padding: 14px 16px 22px; }
+  .settings-card { padding: 14px; }
+}
 .settings-form { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
 .settings-form.inline { flex-direction: row; flex-wrap: wrap; max-width: none; }
 .settings-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem; color: var(--muted); }
@@ -12767,8 +13766,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
 td.wrap { overflow-wrap: anywhere; }
 .channel-add { margin: 10px 0 4px; }
 .channel-add summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; margin-bottom: 10px; }
-.settings-panel .add-host, .settings-panel .scan-section { margin: 0 0 8px; }
-.settings-panel .scan-section h3 { margin-top: 18px; }
 @media (max-width: 600px) {
   .settings-table thead { display: none; }
   .settings-table tr { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--panel-border); }
@@ -13391,6 +14388,7 @@ button.gw-chip:hover { color: var(--text); border-color: var(--accent); }
 .card-devinfo { font-size: 0.78rem; margin: -2px 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #devinfo-body .dp-card { margin-bottom: 10px; }
 .card-loc { color: var(--muted); font-size: 0.78rem; margin-left: 6px; white-space: nowrap; }
+.card-grp { color: var(--accent); font-size: 0.78rem; margin-left: 6px; white-space: nowrap; }
 .loc-table input { width: 100%; }
 .loc-actions { white-space: nowrap; text-align: right; }
 
@@ -13702,8 +14700,8 @@ header .icon-btn svg { width: 17px; height: 17px; fill: none; stroke: currentCol
 .card-title { flex: 1; min-width: 0; }
 .card-name { display: block; font-size: 0.95rem; font-weight: 650; line-height: 1.3; }
 .card-top .card-ip { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 0.78rem; color: var(--muted); word-break: normal; }
-.card-os, .card-loc { display: inline-flex; align-items: center; gap: 8px; }
-.card-os::before, .card-loc::before { content: ''; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.6; }
+.card-os, .card-loc, .card-grp { display: inline-flex; align-items: center; gap: 8px; }
+.card-os::before, .card-loc::before, .card-grp::before { content: ''; width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.6; }
 .status-pill {
   display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap;
   padding: 2px 9px 2px 8px; border-radius: 999px; font-size: 0.74rem; font-weight: 650;
@@ -14078,6 +15076,62 @@ header .icon-btn.active { background: var(--accent-soft); border-color: var(--ac
 @media (max-width: 900px) { .flm-history { grid-template-columns: minmax(0, 1fr); } }
 .flm-link { color: var(--text); text-decoration: none; font-weight: 550; }
 .flm-link:hover { color: var(--accent); text-decoration: underline; }
+
+/* ---- Screens (Settings -> Groups) ---- */
+.screen-pick { display: inline-flex; align-items: center; gap: 4px; }
+.screen-pick.hidden { display: none; }
+.screen-pick select {
+  height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--panel-border);
+  background: var(--panel); color: var(--text); font: inherit; font-size: 0.85rem;
+}
+.screen-pick.active select { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.screen-block { border: 1px solid var(--panel-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.screen-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.screen-block-head input[type=text] { flex: 1 1 200px; }
+.screen-groups { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; }
+.screen-groups label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem; }
+
+/* ---- Change records (Updates) and audit log (Reports) ---- */
+.updates-h-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+.updates-h-row .updates-h { margin: 0; }
+.updates-h-row .segmented { height: 32px; }
+.chg-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; white-space: nowrap;
+  color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent);
+}
+.chg-badge.chg-ok { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
+.chg-badge.chg-bad { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
+.chg-badge.chg-warn { color: #d97706; background: color-mix(in srgb, #d97706 15%, transparent); }
+.chg-badge.chg-info { color: var(--accent); background: var(--accent-soft); }
+.chg-detail.hidden { display: none; }
+.chg-detail > td { background: var(--panel-2); }
+.chg-detail-body { padding: 6px 4px 10px; }
+.chg-detail-body h4 { margin: 14px 0 6px; font-size: 0.85rem; }
+.chg-facts { margin: 0; }
+.chg-host { border: 1px solid var(--panel-border); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; background: var(--panel); }
+.chg-host > summary { cursor: pointer; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chg-pkgs { margin: 6px 0 4px; padding-left: 20px; font-size: 0.84rem; columns: 2 320px; }
+.chg-pkgs li { break-inside: avoid; }
+.chg-output summary { cursor: pointer; margin-top: 6px; }
+.chg-history { margin: 0; padding-left: 20px; font-size: 0.84rem; }
+.audit-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+.audit-filters input, .audit-filters select {
+  height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--panel-border);
+  background: var(--panel); color: var(--text); font: inherit; font-size: 0.85rem;
+}
+.audit-filters input[type=search] { flex: 1 1 240px; }
+.audit-filters label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--muted); }
+.audit-details summary { cursor: pointer; color: var(--muted); }
+.audit-details pre { white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; max-height: 280px; overflow: auto; margin: 4px 0 0; }
+.audit-table tr.audit-denied td, .audit-table tr.audit-failed td { background: color-mix(in srgb, var(--down) 6%, transparent); }
+#cm-recipients { width: 100%; font: inherit; }
+
+/* Forms that draw their own box elsewhere sit flat inside a settings card. */
+.settings-card #add-form, .settings-card.scan-section, .settings-card .scan-section {
+  border: none; padding: 0; background: none; box-shadow: none; margin: 0;
+}
+.settings-card.scan-section { border: 1px solid var(--panel-border); padding: 16px 18px; background: var(--panel); }
+.settings-card.add-host { margin: 0; }
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/assets/topology.js")"
@@ -14099,7 +15153,7 @@ const PROXMOX_ICON = `<svg class="pve-icon" viewBox="0 0 24 24" role="img" aria-
 const HV_COLORS = ['#e57000', '#c2410c', '#b45309', '#be185d'];
 const DOCKER_COLORS = ['#2496ed', '#0e7490', '#4f46e5', '#0f766e'];
 
-let groupMode = ['host', 'location'].includes(document.querySelector('meta[name="user-grouping"]')?.content)
+let groupMode = ['host', 'location', 'group'].includes(document.querySelector('meta[name="user-grouping"]')?.content)
   ? document.querySelector('meta[name="user-grouping"]').content : 'subnet';
 
 function isProxmox(h) {
@@ -14609,8 +15663,9 @@ function showView(name, subnet = '') {
     renderUpdates();
     loadJobs();
     loadSchedules();
+    loadChanges();   // changes.js
     let tick = 0;
-    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) loadSchedules(); }, 10000);
+    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) { loadSchedules(); loadChanges(); } }, 10000);
   }
   if (scans && typeof loadScanQueue === 'function') loadScanQueue();
   if (typeof securityViewShown === 'function') securityViewShown(security);   // vulns.js
@@ -14757,6 +15812,7 @@ async function startJobs(hostIds, type, params = {}) {
     }
     selectedHosts.clear();
     loadJobs();
+    loadChanges();   // changes.js
     return data;
   } catch (err) {
     alert(err.message);
@@ -14924,6 +15980,7 @@ const SCHEDULE_ACTIONS = {
   reboot: { jobType: 'reboot', label: 'Reboot' },
 };
 const TARGET_LABELS = { all: 'All agent hosts', linux: 'All Linux hosts', windows: 'All Windows hosts' };
+const groupLabel = id => (typeof groupNames !== 'undefined' && groupNames[id]) || `#${id}`;   // app.js
 let schedules = [];
 let scheduleConflicts = [];
 let editingSchedule = null;
@@ -15011,6 +16068,7 @@ function renderScheduleSummary() {
 }
 
 function scheduleTargets(s) {
+  if (s.targets === 'groups') return `Group${s.groupIds.length === 1 ? '' : 's'}: ${s.groupIds.map(groupLabel).join(', ') || '(none)'}`;
   if (s.targets !== 'hosts') return TARGET_LABELS[s.targets];
   return s.hostIds.map(id => {
     const h = hostsById.get(id);
@@ -15082,6 +16140,9 @@ function renderScheduleForm(s = null) {
   const days = s ? s.days : 64;   // Sunday
   const targets = s ? s.targets : 'hosts';
   const picked = new Set(s ? s.hostIds : []);
+  const pickedGroups = new Set(s ? s.groupIds || [] : []);
+  const agentIds = new Set(agentHosts().map(h => h.id));
+  const groupAgents = id => [...hostsById.values()].filter(h => agentIds.has(h.id) && (h.groupIds || []).includes(id)).length;
   const hosts = agentHosts();
   scheduleForm.innerHTML = `
     <div class="form-grid">
@@ -15097,14 +16158,20 @@ function renderScheduleForm(s = null) {
       ${WEEKDAYS.map((d, i) => `<label><input type="checkbox" class="sf-day" value="${1 << i}" ${days & (1 << i) ? 'checked' : ''} /> ${d}</label>`).join('')}
     </div></div>
     <div><div class="field-label">Hosts</div><div class="choice-group">
-      ${[['hosts', 'Pick hosts'], ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
+      ${[['hosts', 'Pick hosts'], ['groups', 'Groups'], ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
         `<label><input type="radio" name="sf-targets" value="${v}" ${v === targets ? 'checked' : ''} /> ${l}</label>`).join('')}
     </div></div>
     <div id="sf-hosts" class="sf-hosts">${hosts.map(h => `
       <label class="check"><input type="checkbox" class="sf-host" value="${h.id}" ${picked.has(h.id) ? 'checked' : ''} />
         ${escapeHtml(h.name === h.ip ? h.ip : h.name)} <span class="muted small">${escapeHtml(h.ip)}${h.agent && h.agent.hypervisor ? ' · Proxmox host' : ''}</span></label>`).join('')}
     </div>
-    <p class="hint">Group-based targets ("All Linux" etc.) include hosts whose agent is added later. Hosts muted for
+    <div id="sf-groups" class="choice-group">${Object.keys(groupNames).length ? Object.entries(groupNames).map(([id, n]) => {
+        const c = groupAgents(Number(id));
+        return `<label><input type="checkbox" class="sf-group" value="${id}" ${pickedGroups.has(Number(id)) ? 'checked' : ''} />
+          ${escapeHtml(n)} <span class="muted small">${c} agent host${c === 1 ? '' : 's'}</span></label>`;
+      }).join('') : '<span class="muted small">No groups yet — add them in Settings → Groups.</span>'}</div>
+    <p class="hint">"Groups", "All Linux" and the like are worked out when the schedule runs, so they pick up cards added
+      to the group (or agents installed) later; cards without an agent are left out. Hosts muted for
       maintenance are skipped. Put hosts that depend on each other, like the Proxmox host and its VMs, in separate
       schedules at different times. Avoid 01:00–03:00 on the nights clocks change: a time that doesn't exist runs an
       hour later, and one that happens twice runs once.</p>
@@ -15120,6 +16187,7 @@ function renderScheduleForm(s = null) {
     document.getElementById('sf-reboot-wrap').style.display = a.jobType === 'updates' ? '' : 'none';
     const t = scheduleForm.querySelector('input[name="sf-targets"]:checked').value;
     document.getElementById('sf-hosts').style.display = t === 'hosts' ? '' : 'none';
+    document.getElementById('sf-groups').style.display = t === 'groups' ? '' : 'none';
   };
   document.getElementById('sf-action').addEventListener('change', syncVisibility);
   scheduleForm.querySelectorAll('input[name="sf-targets"]').forEach(r => r.addEventListener('change', syncVisibility));
@@ -15148,6 +16216,7 @@ function scheduleFormBody() {
     atTime: document.getElementById('sf-time').value,
     targets: scheduleForm.querySelector('input[name="sf-targets"]:checked').value,
     hostIds: [...scheduleForm.querySelectorAll('.sf-host:checked')].map(cb => +cb.value),
+    groupIds: [...scheduleForm.querySelectorAll('.sf-group:checked')].map(cb => +cb.value),
   };
 }
 
@@ -16240,6 +17309,51 @@ server's timezone. WebMonitor warns about clashes, such as a Proxmox host
 rebooting while its VMs are being updated, or the WebMonitor server rebooting
 while other hosts' jobs run.
 
+To update by group, pick **Groups** under Hosts and tick one or more groups
+(Settings → Groups). The group's cards are looked up each time the window runs,
+so cards added to a group later are included; cards without an agent are left
+out. Removing a group takes it off its schedules, and a schedule left with no
+groups is turned off.
+
+## Change management and audit log
+
+Every update window, and every manual update, reboot, agent upgrade or
+service restart, gets a **change record** (CHG-000123) under
+**Updates → Change records**. It keeps:
+
+- what was planned: the hosts and, for updates, each host's pending packages
+  when the record was made;
+- who requested it, and who approved or rejected it (with their note);
+- the result on each host: job status, summary, the end of its output and a
+  SHA-256 of the full output;
+- a check after the next inventory of which planned packages are still pending.
+
+Records are kept indefinitely (job history is pruned after 180 days) and can
+be exported as CSV.
+
+**Settings → Change management** sets:
+
+- **Change list**: the email addresses that get change emails, sent through
+  your email channel's SMTP settings (alert emails are unaffected). They get an
+  advance notice for each scheduled window, a notice when a manual change
+  starts (optional), approvals and rejections, and a completion report.
+- **Advance notice**: how many hours before a scheduled window its change
+  record is raised and emailed (0 = when it runs). Hosts are checked again when
+  the window runs.
+- **Require approval**: a scheduled window then runs only if an admin
+  approved its change record beforehand; one not approved in time is skipped
+  and recorded. Manual changes count as approved by the admin who starts them.
+  Any planned window can be rejected, with a reason, whether or not approval is
+  on.
+
+**Reports → Audit log** (admins) lists everything changed in WebMonitor:
+sign-ins (including failed and locked-out ones), every settings, host, user,
+group, schedule and job change made in the dashboard (with what was sent,
+passwords and tokens redacted), schedule runs and the change-record history.
+Filter it, export it as CSV, or use **Verify integrity**: each entry is chained
+to the one before by a SHA-256 hash, so an entry edited or deleted directly in
+the database shows up as a break.
+
 ## Remove an agent
 
 On Linux, run the installer with `--uninstall` (`sudo bash install.sh --uninstall`),
@@ -16612,7 +17726,15 @@ for 3 minutes raises an alert (adjustable under **Settings → Notifications**).
 
 Click a card for its details: device info, history graphs, SNMP server details,
 switch ports, Wi-Fi clients and configuration backups, depending on the device.
-**Edit** changes its name, type, OS, location and SNMP community.
+**Edit** changes its name, type, OS, location, group and SNMP community.
+
+To organise cards your own way, add groups under **Settings → Groups** (for
+example Servers, Cameras, Office PCs), then tick them in each card's **Edit**;
+a card can be in several groups.
+Choosing **Group** in the Group switch above the cards shows them by group. On the same Settings tab,
+a **screen** is a named set of groups: pick it from **Screen** above the cards to
+see only those groups, or open `?screen=N` (the link is shown next to each
+screen) on a wall display to start on it.
 
 ## 4. Turn on SNMP on your switches and servers
 
@@ -18279,10 +19401,161 @@ function bandwidth_problems(array $s, callable $add, array &$frozenHosts): void 
 }
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/includes/audit.php")"
+cat > "$APP_DIR/includes/audit.php" <<'WEBMON_FILE_EOF'
+<?php
+require_once __DIR__ . '/db.php';
+
+/**
+ * Audit log: an append-only record of who did what, for audit and
+ * traceability. Each row's hash covers its content and the previous row's
+ * hash (a hash chain), so a row edited or deleted in the database shows up
+ * as a break when the chain is verified (audit_verify()).
+ *
+ * Two kinds of entries:
+ *  - specific events written where they happen (sign-ins, change records,
+ *    schedule runs, approvals), with a readable summary;
+ *  - every dashboard request that changes something (any API call other
+ *    than GET), written automatically by require_api_auth() when the request
+ *    ends, with the endpoint, the outcome and the request body (secrets
+ *    redacted).
+ */
+
+const AUDIT_GENESIS = '0000000000000000000000000000000000000000000000000000000000000000';
+const AUDIT_REDACT = '/pass|token|secret|community|private|apikey|api_key/i';
+// Requests that change nothing worth recording.
+const AUDIT_SKIP_ENDPOINTS = ['ping.php', 'logout.php', 'agent.php'];
+
+/** Who is acting in this request (set by require_api_auth / sign-in); null = WebMonitor itself. */
+function audit_actor(?array $user = null, bool $set = false): ?array {
+    static $actor = null;
+    if ($set) $actor = $user;
+    return $actor;
+}
+
+/**
+ * Writes one entry. $action is a dotted name ('change.approved',
+ * 'auth.login_failed', 'api.write' ...). $details is stored as JSON.
+ * Never throws: auditing must not break the action being audited, but a
+ * failure is written to the PHP error log.
+ */
+function audit_log(string $action, string $summary, ?string $target = null, ?array $details = null,
+                   string $outcome = 'ok', ?array $actor = null, bool $system = false): void {
+    $actor = $system ? null : ($actor ?? audit_actor());
+    $pdo = db();
+    $locked = false;
+    try {
+        // One writer at a time, so each row chains onto the true previous row.
+        $locked = (int) $pdo->query("SELECT GET_LOCK('webmonitor_audit', 10)")->fetchColumn() === 1;
+        $prev = $pdo->query('SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1')->fetchColumn() ?: AUDIT_GENESIS;
+        $row = [
+            'ts' => (int) round(microtime(true) * 1000),
+            'user_id' => $actor ? (int) $actor['id'] : null,
+            'username' => $actor ? (string) $actor['username'] : null,
+            'ip' => $actor !== null && PHP_SAPI !== 'cli' ? substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45) : null,
+            'action' => substr($action, 0, 40),
+            'target' => $target !== null ? mb_substr($target, 0, 120) : null,
+            'summary' => mb_substr($summary, 0, 500),
+            'details' => $details !== null ? mb_substr(json_encode($details, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 60000) : null,
+            'outcome' => in_array($outcome, ['ok', 'denied', 'failed'], true) ? $outcome : 'ok',
+        ];
+        $hash = audit_hash($prev, $row);
+        $pdo->prepare('INSERT INTO audit_log (ts, user_id, username, ip, action, target, summary, details, outcome, prev_hash, hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$row['ts'], $row['user_id'], $row['username'], $row['ip'], $row['action'], $row['target'],
+                       $row['summary'], $row['details'], $row['outcome'], $prev, $hash]);
+    } catch (Throwable $e) {
+        error_log('webmonitor audit: could not write "' . $action . '": ' . $e->getMessage());
+    } finally {
+        if ($locked) $pdo->query("SELECT RELEASE_LOCK('webmonitor_audit')");
+    }
+}
+
+function audit_hash(string $prev, array $r): string {
+    return hash('sha256', implode("\x1f", [$prev, $r['ts'], $r['user_id'] ?? '', $r['username'] ?? '', $r['ip'] ?? '',
+        $r['action'], $r['target'] ?? '', $r['summary'], $r['details'] ?? '', $r['outcome']]));
+}
+
+/**
+ * Re-computes the chain. Returns ['ok' => bool, 'checked' => n, 'brokenAt' => id|null, 'reason' => ...].
+ */
+function audit_verify(): array {
+    $prev = AUDIT_GENESIS;
+    $n = 0;
+    $stmt = db()->query('SELECT * FROM audit_log ORDER BY id');
+    while ($r = $stmt->fetch()) {
+        $n++;
+        if ($r['prev_hash'] !== $prev) {
+            return ['ok' => false, 'checked' => $n, 'brokenAt' => (int) $r['id'], 'reason' => 'a row before this one was removed or changed'];
+        }
+        if (!hash_equals($r['hash'], audit_hash($prev, $r))) {
+            return ['ok' => false, 'checked' => $n, 'brokenAt' => (int) $r['id'], 'reason' => 'this row was changed after it was written'];
+        }
+        $prev = $r['hash'];
+    }
+    return ['ok' => true, 'checked' => $n, 'brokenAt' => null, 'reason' => null];
+}
+
+/** Copy of $v with secret-looking fields replaced. */
+function audit_redact($v) {
+    if (!is_array($v)) return $v;
+    $out = [];
+    foreach ($v as $k => $x) {
+        $out[$k] = is_string($k) && preg_match(AUDIT_REDACT, $k) ? '[redacted]' : audit_redact($x);
+    }
+    return $out;
+}
+
+const AUDIT_AREAS = [
+    'schedules.php' => 'update schedule', 'jobs.php' => 'update jobs', 'changes.php' => 'change record',
+    'host.php' => 'host', 'hosts.php' => 'host', 'host-agent.php' => 'host agent', 'users.php' => 'user',
+    'account.php' => 'own account', 'notifications.php' => 'notifications', 'groups.php' => 'groups / screens',
+    'locations.php' => 'locations', 'subnets.php' => 'subnets', 'homeassistant.php' => 'Home Assistant',
+    'services.php' => 'services', 'scan.php' => 'scan', 'scan-queue.php' => 'scan queue', 'vulns.php' => 'vulnerability scan',
+    'switch-config.php' => 'switch config', 'flexlm.php' => 'licence servers', 'network.php' => 'network',
+    'alerts.php' => 'alerts', 'devices.php' => 'devices', 'wireless.php' => 'wireless', 'port-map.php' => 'port map',
+];
+
+/**
+ * Registered by require_api_auth() for every non-GET request: when the
+ * request ends, records the endpoint, what was sent and how it went.
+ */
+function audit_api_request(array $user): void {
+    $endpoint = basename(parse_url((string) ($_SERVER['SCRIPT_NAME'] ?? ''), PHP_URL_PATH) ?: '');
+    if (in_array($endpoint, AUDIT_SKIP_ENDPOINTS, true) || !empty($_GET['preview'])) return;
+    $method = (string) ($_SERVER['REQUEST_METHOD'] ?? '');
+    $body = json_decode((string) file_get_contents('php://input'), true);
+    // Display preferences (theme, columns) aren't worth an audit entry.
+    if ($endpoint === 'account.php' && $method === 'PATCH' && is_array($body) && array_keys($body) === ['prefs']) return;
+    $code = http_response_code() ?: 200;
+    $outcome = $code < 400 ? 'ok' : ($code === 401 || $code === 403 ? 'denied' : 'failed');
+    $query = array_diff_key($_GET, ['csrf' => 1]);
+    // POST creates, unless it's an action on something that exists (?id=…&run=1, ?decision=…, ?test=1 …).
+    $postVerb = isset($query['decision']) ? (string) $query['decision']
+        : (array_intersect_key($query, array_flip(['run', 'action', 'test', 'sync', 'scan', 'what'])) ? 'run' : 'create');
+    $verb = ['POST' => $postVerb, 'PUT' => 'save', 'PATCH' => 'change', 'DELETE' => 'remove'][$method] ?? $method;
+    $area = AUDIT_AREAS[$endpoint] ?? preg_replace('/\.php$/', '', $endpoint);
+    $target = $area . (isset($query['id']) ? " #{$query['id']}" : '');
+    audit_log('api.' . strtolower($method), ucfirst("$verb $target") . ($outcome === 'ok' ? '' : " ($code)"), $target,
+        ['endpoint' => "api/$endpoint", 'query' => $query ?: null, 'body' => is_array($body) ? audit_redact($body) : null, 'status' => $code],
+        $outcome, $user);
+}
+
+function audit_row(array $r): array {
+    return [
+        'id' => (int) $r['id'], 'ts' => (int) $r['ts'], 'username' => $r['username'], 'ip' => $r['ip'],
+        'action' => $r['action'], 'target' => $r['target'], 'summary' => $r['summary'],
+        'details' => $r['details'] !== null ? json_decode($r['details'], true) : null,
+        'outcome' => $r['outcome'], 'hash' => $r['hash'],
+    ];
+}
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/includes/auth.php")"
 cat > "$APP_DIR/includes/auth.php" <<'WEBMON_FILE_EOF'
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/audit.php';
 
 /**
  * Session-based login for the dashboard and its API.
@@ -18362,7 +19635,7 @@ function current_user(): ?array {
 
 const THEMES = ['system', 'dark', 'light'];
 const COLUMN_CHOICES = ['auto', '2', '3', '4'];
-const GROUPINGS = ['subnet', 'host', 'location'];
+const GROUPINGS = ['subnet', 'host', 'location', 'group'];
 
 /** Display preferences with defaults; unknown values fall back to defaults. */
 function normalize_prefs(array $p): array {
@@ -18398,7 +19671,10 @@ function require_api_auth(string $role = 'viewer'): array {
         echo json_encode(['error' => 'not logged in']);
         exit;
     }
+    audit_actor($user, true);
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        // Every change made through the dashboard ends up in the audit log.
+        register_shutdown_function('audit_api_request', $user);
         $sent = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         if (!hash_equals($_SESSION['csrf'], $sent)) {
             session_write_close();
@@ -18473,6 +19749,7 @@ function attempt_login(string $username, string $password): ?string {
 
     $wait = login_locked_for($username, $ip);
     if ($wait > 0) {
+        audit_log('auth.login_locked', "Sign-in as \"$username\" from $ip refused: too many failed attempts", $username, null, 'denied', null, true);
         return 'Too many failed attempts. Try again in ' . max(1, (int) ceil($wait / 60)) . ' minute(s).';
     }
 
@@ -18491,7 +19768,11 @@ function attempt_login(string $username, string $password): ?string {
     $pdo->prepare('DELETE FROM login_attempts WHERE ts < ?')
         ->execute([(int) round(microtime(true) * 1000) - 7 * 86400 * 1000]);
 
-    if (!$ok) return 'Incorrect username or password.';
+    if (!$ok) {
+        audit_log('auth.login_failed', "Failed sign-in as \"$username\" from $ip", $username, null, 'denied',
+                  $user ? ['id' => $user['id'], 'username' => $user['username']] : null);
+        return 'Incorrect username or password.';
+    }
 
     if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
         $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
@@ -18505,11 +19786,16 @@ function attempt_login(string $username, string $password): ?string {
     $_SESSION['username'] = $user['username'];
     $_SESSION['csrf'] = bin2hex(random_bytes(32));
     $_SESSION['last_seen'] = time();
+    audit_log('auth.login', "Signed in from $ip", $user['username'], null, 'ok', ['id' => $user['id'], 'username' => $user['username']]);
     return null;
 }
 
 function logout(): void {
     start_session();
+    if (!empty($_SESSION['user_id'])) {
+        audit_log('auth.logout', 'Signed out', $_SESSION['username'] ?? null, null, 'ok',
+                  ['id' => (int) $_SESSION['user_id'], 'username' => (string) ($_SESSION['username'] ?? '')]);
+    }
     $_SESSION = [];
     $p = session_get_cookie_params();
     setcookie(session_name(), '', [
@@ -18517,6 +19803,551 @@ function logout(): void {
         'httponly' => true, 'samesite' => 'Strict',
     ]);
     session_destroy();
+}
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/includes/changes.php")"
+cat > "$APP_DIR/includes/changes.php" <<'WEBMON_FILE_EOF'
+<?php
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/jobs.php';
+require_once __DIR__ . '/notify.php';
+require_once __DIR__ . '/audit.php';
+
+/**
+ * Change management for updates. Every scheduled update window and every
+ * manual update / reboot / agent upgrade / service restart becomes a change
+ * record (CHG-000123) with:
+ *   - what was planned: the hosts and, for updates, the packages pending on
+ *     each when the record was made;
+ *   - who requested it and, when approval is on, who approved or rejected it;
+ *   - the outcome per host (job status, summary, the end of its output) and,
+ *     after the next inventory, which planned packages are still pending.
+ *
+ * Emails go to a separate change list (Settings -> Change management)
+ * through the first enabled email channel: an advance notice a set number of
+ * hours before each scheduled window, a notice when a manual change starts,
+ * decisions, and a completion report.
+ *
+ * With approval turned on, a scheduled window only runs if an admin approved
+ * its change record beforehand; otherwise it's skipped. A planned change can
+ * always be rejected (vetoed), approval or not. Manual changes are started by
+ * an admin, so they count as approved by that admin.
+ *
+ * cli/cron.php -> process_schedules() -> change_process() every minute.
+ */
+
+const CHANGE_JOB_TYPES = ['updates', 'reboot', 'agent_upgrade', 'service_restart'];   // 'refresh' changes nothing
+const CHANGE_DEFAULTS = ['recipients' => '', 'lead_hours' => 24, 'require_approval' => false, 'notify_manual' => true];
+const CHANGE_OPEN = ['planned', 'pending_approval', 'approved'];
+const CHANGE_STATUS_LABELS = [
+    'planned' => 'Planned', 'pending_approval' => 'Awaiting approval', 'approved' => 'Approved', 'rejected' => 'Rejected',
+    'in_progress' => 'In progress', 'completed' => 'Completed', 'partial' => 'Partly completed', 'failed' => 'Failed',
+    'skipped' => 'Not run', 'cancelled' => 'Cancelled',
+];
+const CHANGE_VERIFY_MAX_SEC = 12 * 3600;   // stop waiting for fresh inventories after this
+const CHANGE_OUTPUT_KEEP = 8000;           // end of each job's output kept on the record
+
+function change_number(int $id): string {
+    return sprintf('CHG-%06d', $id);
+}
+
+function change_settings(): array {
+    $raw = db()->query("SELECT v FROM settings WHERE k = 'change_mgmt'")->fetchColumn();
+    $saved = $raw ? (json_decode($raw, true) ?: []) : [];
+    return [
+        'recipients' => (string) ($saved['recipients'] ?? CHANGE_DEFAULTS['recipients']),
+        'lead_hours' => max(0, min(720, (int) ($saved['lead_hours'] ?? CHANGE_DEFAULTS['lead_hours']))),
+        'require_approval' => (bool) ($saved['require_approval'] ?? CHANGE_DEFAULTS['require_approval']),
+        'notify_manual' => (bool) ($saved['notify_manual'] ?? CHANGE_DEFAULTS['notify_manual']),
+    ];
+}
+
+/** Validates and saves; throws InvalidArgumentException. */
+function save_change_settings(array $in): array {
+    $cur = change_settings();
+    if (array_key_exists('recipients', $in)) {
+        $list = array_values(array_unique(array_filter(array_map('trim', preg_split('/[,;\s]+/', (string) $in['recipients'])))));
+        foreach ($list as $addr) {
+            if (!filter_var($addr, FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException("\"$addr\" isn't an email address.");
+        }
+        $cur['recipients'] = implode(', ', $list);
+    }
+    if (array_key_exists('lead_hours', $in)) {
+        $h = (int) $in['lead_hours'];
+        if ($h < 0 || $h > 720) throw new InvalidArgumentException('Notice must be 0-720 hours.');
+        $cur['lead_hours'] = $h;
+    }
+    foreach (['require_approval', 'notify_manual'] as $k) {
+        if (array_key_exists($k, $in)) $cur[$k] = (bool) $in[$k];
+    }
+    $before = change_settings();
+    db()->prepare("INSERT INTO settings (k, v) VALUES ('change_mgmt', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")
+        ->execute([json_encode($cur)]);
+    // Open changes follow the approval setting: switched on, planned windows
+    // now need approval; switched off, those waiting no longer do.
+    if ($cur['require_approval'] !== $before['require_approval']) {
+        [$from, $to] = $cur['require_approval'] ? ['planned', 'pending_approval'] : ['pending_approval', 'planned'];
+        db()->prepare("UPDATE change_records SET status = ? WHERE status = ? AND source = 'schedule'")->execute([$to, $from]);
+    }
+    return $cur;
+}
+
+function fmt_change_time(int $ms): string {
+    return date('D j M Y H:i T', intdiv($ms, 1000));
+}
+
+/** Host label for messages. */
+function change_host_label(array $h): string {
+    return $h['name'] === $h['ip_address'] ? $h['ip_address'] : "{$h['name']} ({$h['ip_address']})";
+}
+
+/**
+ * What a change will do on each host: {hostId: {host, packages: [...] | null,
+ * pendingTotal, pendingSecurity}}. Packages are the updates pending in the
+ * host's last inventory (only security ones for a security-only run).
+ */
+function change_plan(array $hostIds, string $jobType, array $params): array {
+    $hostIds = array_values(array_unique(array_filter(array_map('intval', $hostIds))));
+    if (!$hostIds) return [];
+    $in = implode(',', $hostIds);
+    $rows = db()->query("SELECT h.id, h.name, h.ip_address, a.inventory FROM hosts h LEFT JOIN agents a ON a.host_id = h.id
+                         WHERE h.id IN ($in) ORDER BY h.name")->fetchAll();
+    $out = [];
+    foreach ($rows as $r) {
+        $entry = ['host' => change_host_label($r)];
+        if ($jobType === 'updates') {
+            $inv = json_decode((string) $r['inventory'], true) ?: [];
+            $pk = is_array($inv['updates']['packages'] ?? null) ? $inv['updates']['packages'] : null;
+            if ($pk !== null) {
+                $entry['pendingTotal'] = count($pk);
+                $entry['pendingSecurity'] = count(array_filter($pk, fn($p) => !empty($p['security'])));
+                if (!empty($params['security_only'])) $pk = array_values(array_filter($pk, fn($p) => !empty($p['security'])));
+                $entry['packages'] = array_map(fn($p) => array_filter([
+                    'name' => mb_substr((string) ($p['name'] ?? '?'), 0, 200),
+                    'current' => $p['current'] ?? null,
+                    'new' => $p['new'] ?? null,
+                    'kb' => $p['kb'] ?? null,
+                    'security' => !empty($p['security']),
+                ], fn($v) => $v !== null && $v !== ''), array_slice($pk, 0, 1000));
+            } else {
+                $entry['packages'] = null;   // no inventory yet
+            }
+        }
+        $out[(string) $r['id']] = $entry;
+    }
+    return $out;
+}
+
+function change_get(int $id): ?array {
+    $q = db()->prepare('SELECT * FROM change_records WHERE id = ?');
+    $q->execute([$id]);
+    return $q->fetch() ?: null;
+}
+
+/** Record for the browser. */
+function change_row(array $c, bool $full = false): array {
+    $params = json_decode($c['params'], true) ?: [];
+    $planned = json_decode($c['planned'], true) ?: [];
+    $row = [
+        'id' => (int) $c['id'],
+        'number' => change_number((int) $c['id']),
+        'source' => $c['source'],
+        'scheduleId' => $c['schedule_id'] !== null ? (int) $c['schedule_id'] : null,
+        'title' => $c['title'],
+        'jobType' => $c['job_type'],
+        'action' => job_label($c['job_type'], $params),
+        'plannedAt' => (int) $c['planned_at'],
+        'status' => $c['status'],
+        'statusLabel' => CHANGE_STATUS_LABELS[$c['status']] ?? $c['status'],
+        'hostCount' => count(json_decode($c['host_ids'], true) ?: []),
+        'hosts' => array_values(array_map(fn($p) => $p['host'], $planned)),
+        'packageCount' => array_sum(array_map(fn($p) => is_array($p['packages'] ?? null) ? count($p['packages']) : 0, $planned)),
+        'requestedBy' => $c['requested_name'],
+        'decidedBy' => $c['decided_name'],
+        'decidedAt' => $c['decided_at'] !== null ? (int) $c['decided_at'] : null,
+        'decisionNote' => $c['decision_note'],
+        'createdAt' => (int) $c['created_at'],
+        'startedAt' => $c['started_at'] !== null ? (int) $c['started_at'] : null,
+        'finishedAt' => $c['finished_at'] !== null ? (int) $c['finished_at'] : null,
+        'verifiedAt' => $c['verified_at'] !== null ? (int) $c['verified_at'] : null,
+        'noticeSentAt' => $c['notice_sent_at'] !== null ? (int) $c['notice_sent_at'] : null,
+        'reportSentAt' => $c['report_sent_at'] !== null ? (int) $c['report_sent_at'] : null,
+    ];
+    if ($full) {
+        $row['planned'] = $planned;
+        $row['outcome'] = json_decode((string) $c['outcome'], true) ?: null;
+        $row['skipped'] = json_decode((string) $c['skipped'], true) ?: [];
+        $row['verification'] = json_decode((string) $c['verification'], true) ?: null;
+        $row['jobIds'] = array_map('intval', json_decode($c['job_ids'], true) ?: []);
+        $row['history'] = array_map('audit_row', db()->query(
+            "SELECT * FROM audit_log WHERE action LIKE 'change.%' AND target = " . db()->quote(change_number((int) $c['id'])) . ' ORDER BY id')->fetchAll());
+    }
+    return $row;
+}
+
+function change_user_name(?int $userId): ?string {
+    if ($userId === null) return null;
+    $q = db()->prepare('SELECT username FROM users WHERE id = ?');
+    $q->execute([$userId]);
+    return $q->fetchColumn() ?: null;
+}
+
+function change_set(int $id, array $fields): void {
+    $sets = implode(', ', array_map(fn($k) => "$k = ?", array_keys($fields)));
+    db()->prepare("UPDATE change_records SET $sets WHERE id = ?")->execute([...array_values($fields), $id]);
+}
+
+// ---------------------------------------------------------------- creating
+
+/**
+ * The change record for one occurrence of a schedule, made (and announced)
+ * if it doesn't exist yet. Returns the row.
+ */
+function change_for_occurrence(array $sched, DateTimeImmutable $occ): array {
+    $key = $occ->format('Y-m-d H:i');
+    $q = db()->prepare('SELECT * FROM change_records WHERE schedule_id = ? AND occurrence_key = ?');
+    $q->execute([$sched['id'], $key]);
+    if ($c = $q->fetch()) return $c;
+
+    $settings = change_settings();
+    $params = json_decode($sched['params'], true) ?: [];
+    $hostIds = schedule_host_ids($sched);
+    $requester = $sched['created_by'] !== null ? (int) $sched['created_by'] : null;
+    $status = $settings['require_approval'] ? 'pending_approval' : 'planned';
+    db()->prepare('INSERT IGNORE INTO change_records (source, schedule_id, occurrence_key, title, job_type, params, planned_at, status,
+                   host_ids, planned, job_ids, requested_by, requested_name, created_at)
+                   VALUES (\'schedule\', ?, ?, ?, ?, ?, ?, ?, ?, ?, \'[]\', ?, ?, ?)')
+        ->execute([$sched['id'], $key, mb_substr($sched['name'], 0, 120), $sched['job_type'], $sched['params'],
+                   $occ->getTimestamp() * 1000, $status, json_encode($hostIds),
+                   json_encode((object) change_plan($hostIds, $sched['job_type'], $params)),
+                   $requester, change_user_name($requester), now_ms()]);
+    $q->execute([$sched['id'], $key]);
+    $c = $q->fetch();
+    $num = change_number((int) $c['id']);
+    audit_log('change.created', "$num raised for scheduled window \"{$sched['name']}\" at " . fmt_change_time((int) $c['planned_at'])
+        . ' on ' . count($hostIds) . ' host(s)' . ($status === 'pending_approval' ? ', awaiting approval' : ''),
+        $num, ['scheduleId' => (int) $sched['id'], 'hostIds' => $hostIds, 'status' => $status], 'ok', null, true);
+    change_send_notice($c);
+    return change_get((int) $c['id']);
+}
+
+/**
+ * A change record for jobs an admin (or a schedule's "Run now") just
+ * queued. $res is create_jobs()'s result. Nothing is recorded for job types
+ * that change nothing, or if no job was created.
+ */
+function change_record_manual(array $res, string $type, array $params, ?array $user, string $title,
+                              ?int $scheduleId = null, ?int $runId = null): ?int {
+    if (!in_array($type, CHANGE_JOB_TYPES, true) || !$res['created']) return null;
+    $ids = implode(',', array_map('intval', $res['created']));
+    $hostIds = array_map('intval', db()->query("SELECT host_id FROM jobs WHERE id IN ($ids)")->fetchAll(PDO::FETCH_COLUMN));
+    $now = now_ms();
+    $settings = change_settings();
+    db()->prepare('INSERT INTO change_records (source, schedule_id, schedule_run_id, title, job_type, params, planned_at, status, host_ids,
+                   planned, job_ids, skipped, requested_by, requested_name, decided_by, decided_name, decided_at, decision_note,
+                   created_at, started_at) VALUES (\'manual\', ?, ?, ?, ?, ?, ?, \'in_progress\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$scheduleId, $runId, mb_substr($title, 0, 120), $type, json_encode(job_params($type, $params)), $now,
+                   json_encode($hostIds), json_encode((object) change_plan($hostIds, $type, $params)), json_encode($res['created']),
+                   json_encode($res['skipped']), $user['id'] ?? null, $user['username'] ?? null,
+                   $user['id'] ?? null, $user['username'] ?? null, $now,
+                   $settings['require_approval'] ? 'Manual change: approved by the admin who started it' : null, $now, $now]);
+    $id = (int) db()->lastInsertId();
+    $num = change_number($id);
+    audit_log('change.created', "$num: " . job_label($type, $params) . ' started on ' . count($hostIds) . ' host(s) ("' . $title . '")',
+        $num, ['jobIds' => $res['created'], 'hostIds' => $hostIds, 'skipped' => $res['skipped']], 'ok', $user);
+    if ($settings['notify_manual']) change_send_notice(change_get($id));
+    return $id;
+}
+
+// ---------------------------------------------------------------- decisions
+
+/**
+ * Approve or reject an open change. Throws InvalidArgumentException when the
+ * change can't take that decision.
+ */
+function change_decide(int $id, string $decision, string $note, array $user): array {
+    $c = change_get($id);
+    if (!$c) throw new InvalidArgumentException('Change not found.');
+    $num = change_number($id);
+    if ($decision === 'approve') {
+        if ($c['status'] !== 'pending_approval') throw new InvalidArgumentException("$num isn't waiting for approval.");
+        $status = 'approved';
+    } elseif ($decision === 'reject') {
+        if (!in_array($c['status'], CHANGE_OPEN, true)) throw new InvalidArgumentException("$num has already run or been closed.");
+        $status = 'rejected';
+    } else {
+        throw new InvalidArgumentException('Unknown decision.');
+    }
+    if ($status === 'rejected' && trim($note) === '') throw new InvalidArgumentException('Give a reason for rejecting it.');
+    $note = mb_substr(trim($note), 0, 500);
+    change_set($id, ['status' => $status, 'decided_by' => $user['id'], 'decided_name' => $user['username'],
+                     'decided_at' => now_ms(), 'decision_note' => $note !== '' ? $note : null]);
+    $self = $c['requested_by'] !== null && (int) $c['requested_by'] === (int) $user['id'];
+    audit_log('change.' . $status, "$num " . ($status === 'approved' ? 'approved' : 'rejected') . " by {$user['username']}"
+        . ($self ? ' (also the requester)' : '') . ($note !== '' ? ": $note" : ''), $num, ['note' => $note ?: null], 'ok', $user);
+    $c = change_get($id);
+    change_email("[$num] " . ($status === 'approved' ? 'Approved' : 'Rejected — will not run') . ": {$c['title']}",
+        change_header($c) . "\n" . ($status === 'approved' ? 'Approved' : 'Rejected') . " by {$user['username']}"
+        . ($note !== '' ? "\nNote: $note" : '') . "\n", $num);
+    return $c;
+}
+
+// ---------------------------------------------------------------- running
+
+/**
+ * Called by process_schedules() at a window's time, before running it.
+ * Returns ['run' => bool, 'change' => row]: a rejected change, or one still
+ * waiting for approval, doesn't run (and that is recorded and emailed).
+ */
+function change_gate(array $sched, DateTimeImmutable $occ): array {
+    $c = change_for_occurrence($sched, $occ);
+    $num = change_number((int) $c['id']);
+    $reason = null;
+    if ($c['status'] === 'rejected') {
+        $reason = 'it was rejected' . ($c['decided_name'] ? " by {$c['decided_name']}" : '');
+    } elseif ($c['status'] === 'pending_approval' || ($c['status'] === 'planned' && change_settings()['require_approval'])) {
+        $reason = 'it was not approved before the window';
+    }
+    if ($reason === null) return ['run' => true, 'change' => $c];
+
+    if ($c['status'] !== 'rejected') change_set((int) $c['id'], ['status' => 'skipped', 'finished_at' => now_ms()]);
+    audit_log('change.not_run', "$num: window \"{$sched['name']}\" did not run because $reason", $num, null, 'ok', null, true);
+    change_email("[$num] Not run: {$c['title']}", change_header(change_get((int) $c['id'])) . "\nThe window did not run because $reason.\n", $num);
+    return ['run' => false, 'change' => $c];
+}
+
+/** Links a scheduled change to the jobs its window just queued. */
+function change_started(array $c, int $runId, array $res): void {
+    $num = change_number((int) $c['id']);
+    $ids = array_map('intval', $res['created']);
+    $hostIds = $ids ? array_map('intval', db()->query('SELECT host_id FROM jobs WHERE id IN (' . implode(',', $ids) . ')')->fetchAll(PDO::FETCH_COLUMN)) : [];
+    $now = now_ms();
+    $fields = ['schedule_run_id' => $runId, 'job_ids' => json_encode($ids), 'skipped' => json_encode($res['skipped']), 'started_at' => $now];
+    // Hosts are re-resolved at run time (groups, "All Linux"); keep the plan in step.
+    $planned = json_decode($c['planned'], true) ?: [];
+    $missing = array_diff($hostIds, array_map('intval', array_keys($planned)));
+    if ($missing) {
+        $planned += change_plan($missing, $c['job_type'], json_decode($c['params'], true) ?: []);
+        $fields['planned'] = json_encode((object) $planned);
+    }
+    $fields['host_ids'] = json_encode($hostIds);
+    if ($ids) {
+        $fields['status'] = 'in_progress';
+    } else {
+        $fields['status'] = 'skipped';
+        $fields['finished_at'] = $now;
+    }
+    change_set((int) $c['id'], $fields);
+    audit_log($ids ? 'change.started' : 'change.not_run', $ids ? "$num started on " . count($ids) . ' host(s)'
+        : "$num: nothing ran (" . ($res['skipped'] ? 'every host was skipped' : 'no matching hosts') . ')', $num,
+        ['jobIds' => $ids, 'skipped' => $res['skipped']], 'ok', null, true);
+    if (!$ids) change_email("[$num] Not run: {$c['title']}", change_header(change_get((int) $c['id'])) . "\nNothing ran.\n"
+        . change_skipped_text($res['skipped']), $num);
+}
+
+/** Cron, every minute: notices, stale windows, finished changes, verification. */
+function change_process(): void {
+    $pdo = db();
+    $settings = change_settings();
+    $now = new DateTimeImmutable();
+
+    // 1. Advance notices: raise the record once a window is within the notice period.
+    if ($settings['lead_hours'] > 0) {
+        foreach ($pdo->query('SELECT * FROM update_schedules WHERE enabled = 1')->fetchAll() as $s) {
+            if (!in_array($s['job_type'], CHANGE_JOB_TYPES, true)) continue;
+            $next = schedule_next_run($s, $now);
+            if ($next && $next->getTimestamp() - $now->getTimestamp() <= $settings['lead_hours'] * 3600) change_for_occurrence($s, $next);
+        }
+    }
+
+    // 2. Open changes whose window passed without running (schedule edited, disabled or deleted, server down).
+    $late = now_ms() - (SCHEDULE_GRACE_MIN + 5) * 60000;
+    foreach ($pdo->query("SELECT * FROM change_records WHERE status IN ('planned', 'pending_approval', 'approved') AND planned_at < $late")->fetchAll() as $c) {
+        $num = change_number((int) $c['id']);
+        change_set((int) $c['id'], ['status' => 'cancelled', 'finished_at' => now_ms()]);
+        audit_log('change.cancelled', "$num cancelled: its window passed without running (the schedule was changed, disabled or deleted, or the server was down)",
+            $num, null, 'ok', null, true);
+        change_email("[$num] Cancelled: {$c['title']}", change_header(change_get((int) $c['id']))
+            . "\nThe window passed without running: the schedule was changed, disabled or deleted, or the server was down.\n", $num);
+    }
+
+    // 3. Changes whose jobs have all finished: record the outcome and send the report.
+    foreach ($pdo->query("SELECT * FROM change_records WHERE status = 'in_progress'")->fetchAll() as $c) {
+        $ids = array_map('intval', json_decode($c['job_ids'], true) ?: []);
+        $jobs = $ids ? $pdo->query(JOB_SELECT . ' WHERE j.id IN (' . implode(',', $ids) . ')')->fetchAll() : [];
+        if (array_filter($jobs, fn($j) => in_array($j['status'], ['queued', 'running'], true))) continue;
+        change_finish($c, $jobs);
+    }
+
+    // 4. Verification: which planned packages are still pending in each host's next inventory.
+    foreach ($pdo->query("SELECT * FROM change_records WHERE job_type = 'updates' AND status IN ('completed', 'partial')
+                          AND verified_at IS NULL")->fetchAll() as $c) {
+        change_verify($c);
+    }
+}
+
+function change_finish(array $c, array $jobs): void {
+    $num = change_number((int) $c['id']);
+    $outcome = [];
+    foreach ($jobs as $j) {
+        $out = (string) $j['output'];
+        $outcome[(string) $j['host_id']] = [
+            'host' => change_host_label(['name' => $j['host_name'], 'ip_address' => $j['ip_address']]),
+            'jobId' => (int) $j['id'], 'status' => $j['status'], 'summary' => $j['summary'],
+            'exitCode' => $j['exit_code'] !== null ? (int) $j['exit_code'] : null,
+            'startedAt' => $j['started_at'] !== null ? (int) $j['started_at'] : null,
+            'finishedAt' => $j['finished_at'] !== null ? (int) $j['finished_at'] : null,
+            'output' => strlen($out) > CHANGE_OUTPUT_KEEP ? "[…]\n" . substr($out, -CHANGE_OUTPUT_KEEP) : $out,
+            'outputSha256' => $out !== '' ? hash('sha256', $out) : null,
+        ];
+    }
+    $ok = count(array_filter($outcome, fn($o) => $o['status'] === 'succeeded'));
+    $skipped = json_decode((string) $c['skipped'], true) ?: [];
+    $status = $ok === 0 ? 'failed' : ($ok === count($outcome) && !$skipped ? 'completed' : 'partial');
+    change_set((int) $c['id'], ['status' => $status, 'outcome' => json_encode((object) $outcome), 'finished_at' => now_ms()]);
+    $summary = "$ok of " . count($outcome) . ' succeeded' . ($skipped ? ', ' . count($skipped) . ' skipped' : '');
+    audit_log('change.' . $status, "$num " . strtolower(CHANGE_STATUS_LABELS[$status]) . ": $summary", $num,
+        ['results' => array_map(fn($o) => ['host' => $o['host'], 'status' => $o['status'], 'summary' => $o['summary'],
+                                           'outputSha256' => $o['outputSha256']], array_values($outcome))], 'ok', null, true);
+    $c = change_get((int) $c['id']);
+    change_send_report($c, $summary);
+}
+
+function change_verify(array $c): void {
+    $outcome = json_decode((string) $c['outcome'], true) ?: [];
+    $planned = json_decode($c['planned'], true) ?: [];
+    $ver = json_decode((string) $c['verification'], true) ?: [];
+    $pending = 0;
+    foreach ($outcome as $hid => $o) {
+        if (isset($ver[$hid]) || $o['status'] !== 'succeeded') continue;
+        $q = db()->prepare('SELECT inventory, inventory_at FROM agents WHERE host_id = ?');
+        $q->execute([(int) $hid]);
+        $a = $q->fetch();
+        if (!$a || (int) $a['inventory_at'] <= (int) $o['finishedAt']) {
+            $pending++;
+            continue;
+        }
+        $inv = json_decode((string) $a['inventory'], true) ?: [];
+        $now = array_map(fn($p) => (string) ($p['name'] ?? ''), is_array($inv['updates']['packages'] ?? null) ? $inv['updates']['packages'] : []);
+        $want = array_map(fn($p) => $p['name'], is_array($planned[$hid]['packages'] ?? null) ? $planned[$hid]['packages'] : []);
+        $ver[$hid] = ['checkedAt' => (int) $a['inventory_at'], 'stillPending' => array_values(array_intersect($want, $now)),
+                      'plannedCount' => count($want)];
+    }
+    $done = $pending === 0 || now_ms() - (int) $c['finished_at'] > CHANGE_VERIFY_MAX_SEC * 1000;
+    $fields = ['verification' => json_encode((object) $ver)];
+    if ($done) $fields['verified_at'] = now_ms();
+    change_set((int) $c['id'], $fields);
+    if ($done) {
+        $num = change_number((int) $c['id']);
+        $left = array_sum(array_map(fn($v) => count($v['stillPending']), $ver));
+        audit_log('change.verified', "$num verified against " . count($ver) . " host inventor" . (count($ver) === 1 ? 'y' : 'ies')
+            . ": $left planned package(s) still pending" . ($pending ? ", $pending host(s) didn't report in time" : ''), $num,
+            ['verification' => $ver], 'ok', null, true);
+    }
+}
+
+// ---------------------------------------------------------------- email
+
+/** The first enabled email channel's settings, sending to the change list. */
+function change_email_channel(): ?array {
+    $to = change_settings()['recipients'];
+    if ($to === '') return null;
+    $ch = db()->query("SELECT * FROM notification_channels WHERE type = 'email' AND enabled = 1 ORDER BY id LIMIT 1")->fetch();
+    if (!$ch) return null;
+    $cfg = json_decode((string) $ch['config'], true) ?: [];
+    $cfg['to'] = $to;
+    return ['id' => (int) $ch['id'], 'cfg' => $cfg];
+}
+
+/** Sends to the change list; returns null or an error. Logged in the audit trail either way. */
+function change_email(string $subject, string $body, ?string $num = null): ?string {
+    $ch = change_email_channel();
+    if (!$ch) return change_settings()['recipients'] === '' ? 'no change list set' : 'no enabled email channel';
+    $err = smtp_send($ch['cfg'], $subject, $body . "\n-- \nSent by WebMonitor change management");
+    log_notification($ch['id'], null, $err === null, ($err ?? 'sent') . ' (change list)');
+    audit_log('change.email', ($err === null ? 'Emailed' : 'Could not email') . " the change list: $subject" . ($err ? " — $err" : ''),
+        $num, ['to' => $ch['cfg']['to']], $err === null ? 'ok' : 'failed', null, true);
+    return $err;
+}
+
+function change_header(array $c): string {
+    $params = json_decode($c['params'], true) ?: [];
+    $lines = [
+        'Change:       ' . change_number((int) $c['id']),
+        'Status:       ' . (CHANGE_STATUS_LABELS[$c['status']] ?? $c['status']),
+        'Title:        ' . $c['title'],
+        'Action:       ' . job_label($c['job_type'], $params),
+        ($c['source'] === 'schedule' ? 'Window:       ' : 'Started:      ') . fmt_change_time((int) $c['planned_at']),
+        'Requested by: ' . ($c['requested_name'] ?: 'WebMonitor') . ($c['source'] === 'schedule' ? ' (scheduled)' : ' (manual)'),
+    ];
+    if ($c['decided_name']) {
+        $lines[] = 'Decision:     ' . ($c['status'] === 'rejected' ? 'Rejected' : 'Approved') . " by {$c['decided_name']}"
+            . ($c['decided_at'] ? ' at ' . fmt_change_time((int) $c['decided_at']) : '')
+            . ($c['decision_note'] ? " — {$c['decision_note']}" : '');
+    }
+    return implode("\n", $lines) . "\n";
+}
+
+function change_plan_text(array $c): string {
+    $planned = json_decode($c['planned'], true) ?: [];
+    if (!$planned) return "Hosts: none matched yet (worked out again when the window runs).\n";
+    $out = 'Hosts (' . count($planned) . "):\n";
+    foreach ($planned as $p) {
+        $out .= "  - {$p['host']}";
+        if (array_key_exists('packages', $p)) {
+            if ($p['packages'] === null) {
+                $out .= ": no update inventory yet\n";
+                continue;
+            }
+            $n = count($p['packages']);
+            $sec = count(array_filter($p['packages'], fn($x) => !empty($x['security'])));
+            $out .= ": $n update" . ($n === 1 ? '' : 's') . ($sec ? " ($sec security)" : '') . "\n";
+            foreach (array_slice($p['packages'], 0, 40) as $x) {
+                $out .= '      ' . $x['name'] . (isset($x['new']) ? ' ' . (isset($x['current']) ? "{$x['current']} → " : '') . $x['new'] : '')
+                    . (isset($x['kb']) ? " ({$x['kb']})" : '') . (!empty($x['security']) ? ' [security]' : '') . "\n";
+            }
+            if ($n > 40) $out .= '      … and ' . ($n - 40) . " more (full list in WebMonitor)\n";
+        } else {
+            $out .= "\n";
+        }
+    }
+    return $out;
+}
+
+function change_skipped_text(array $skipped): string {
+    return $skipped ? "Skipped:\n" . implode("\n", array_map(fn($s) => "  - {$s['host']}: {$s['reason']}", $skipped)) . "\n" : '';
+}
+
+function change_send_notice(array $c): void {
+    $num = change_number((int) $c['id']);
+    $when = $c['source'] === 'schedule' ? 'Planned' : 'Started';
+    $body = change_header($c) . "\n" . change_plan_text($c);
+    if ($c['skipped']) $body .= change_skipped_text(json_decode((string) $c['skipped'], true) ?: []);
+    if ($c['status'] === 'pending_approval') {
+        $body .= "\nThis change needs approval before " . fmt_change_time((int) $c['planned_at'])
+            . " or it won't run. Approve or reject it in WebMonitor: Updates → Change records.\n";
+    } elseif ($c['source'] === 'schedule') {
+        $body .= "\nTo stop it, reject it in WebMonitor (Updates → Change records) or turn the schedule off.\n";
+    }
+    if (change_email("[$num] $when change: {$c['title']} — " . fmt_change_time((int) $c['planned_at']), $body, $num) === null) {
+        change_set((int) $c['id'], ['notice_sent_at' => now_ms()]);
+    }
+}
+
+function change_send_report(array $c, string $summary): void {
+    $num = change_number((int) $c['id']);
+    $outcome = json_decode((string) $c['outcome'], true) ?: [];
+    $body = change_header($c) . 'Finished:     ' . fmt_change_time((int) $c['finished_at']) . "\nResult:       $summary\n\n";
+    foreach ($outcome as $o) {
+        $body .= ($o['status'] === 'succeeded' ? '  ✔ ' : '  ✘ ') . "{$o['host']}: " . ($o['summary'] ?: $o['status'])
+            . ($o['status'] !== 'succeeded' ? " ({$o['status']})" : '') . "\n";
+    }
+    $body .= change_skipped_text(json_decode((string) $c['skipped'], true) ?: []);
+    $body .= "\nPlanned:\n" . change_plan_text($c);
+    if (change_email("[$num] " . CHANGE_STATUS_LABELS[$c['status']] . ": {$c['title']} — $summary", $body, $num) === null) {
+        change_set((int) $c['id'], ['report_sent_at' => now_ms()]);
+    }
 }
 WEBMON_FILE_EOF
 
@@ -18647,9 +20478,11 @@ function host_summaries(array $hosts): array {
     $wifi = wireless_summaries();
     $scanned = device_card_summaries();
     $services = service_card_summaries();
-    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services) {
+    $groups = host_group_map();
+    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services, $groups) {
         $id = (int) $host['id'];
         return summarize_host($host, $historyById[$id]) + [
+            'groupIds' => $groups[$id] ?? [],                   // card groups (Settings -> Groups)
             'agent' => $agents[$id] ?? null,
             'nas' => $nas[$id] ?? null,                          // NAS health (SNMP) for the card
             'parent' => $topo['parents'][$id] ?? null,          // the Proxmox host this VM/LXC runs on
@@ -19355,6 +21188,44 @@ function app_version(): string {
     $root = dirname(__DIR__);
     $files = array_merge([$root . '/index.php'], glob($root . '/assets/*.{js,css}', GLOB_BRACE) ?: []);
     return substr(md5(implode('|', array_map(fn($f) => $f . @filemtime($f), $files))), 0, 12);
+}
+
+/** Card groups (Settings -> Groups) with how many cards each has. */
+function card_groups_list(): array {
+    return array_map(fn($r) => ['id' => (int) $r['id'], 'name' => $r['name'], 'hosts' => (int) $r['n']],
+        db()->query('SELECT g.id, g.name, COUNT(m.host_id) n FROM card_groups g LEFT JOIN host_group_members m ON m.group_id = g.id
+                     GROUP BY g.id, g.name ORDER BY g.sort, g.name')->fetchAll());
+}
+
+/** [hostId => [groupId, ...]] for every card in at least one group. */
+function host_group_map(): array {
+    $out = [];
+    foreach (db()->query('SELECT host_id, group_id FROM host_group_members ORDER BY host_id, group_id') as $r) {
+        $out[(int) $r['host_id']][] = (int) $r['group_id'];
+    }
+    return $out;
+}
+
+/** Host ids that are in any of these groups. */
+function hosts_in_groups(array $groupIds): array {
+    $groupIds = array_values(array_unique(array_filter(array_map('intval', $groupIds))));
+    if (!$groupIds) return [];
+    $q = db()->prepare('SELECT DISTINCT host_id FROM host_group_members WHERE group_id IN ('
+        . implode(',', array_fill(0, count($groupIds), '?')) . ')');
+    $q->execute($groupIds);
+    return array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/** Screens: named sets of card groups, each with its group ids in order. */
+function screens_list(): array {
+    $out = [];
+    foreach (db()->query('SELECT id, name FROM screens ORDER BY sort, name') as $r) {
+        $out[(int) $r['id']] = ['id' => (int) $r['id'], 'name' => $r['name'], 'groupIds' => []];
+    }
+    foreach (db()->query('SELECT screen_id, group_id FROM screen_groups ORDER BY screen_id, sort') as $r) {
+        if (isset($out[(int) $r['screen_id']])) $out[(int) $r['screen_id']]['groupIds'][] = (int) $r['group_id'];
+    }
+    return array_values($out);
 }
 WEBMON_FILE_EOF
 
@@ -24284,6 +26155,7 @@ cat > "$APP_DIR/includes/schedules.php" <<'WEBMON_FILE_EOF'
 <?php
 require_once __DIR__ . '/jobs.php';
 require_once __DIR__ . '/notify.php';
+require_once __DIR__ . '/changes.php';
 
 /**
  * Update windows: recurring jobs (e.g. security updates every Sunday at
@@ -24297,7 +26169,7 @@ require_once __DIR__ . '/notify.php';
  */
 
 const SCHEDULE_JOB_TYPES = ['updates', 'refresh', 'reboot'];
-const SCHEDULE_TARGETS = ['all', 'linux', 'windows', 'hosts'];
+const SCHEDULE_TARGETS = ['all', 'linux', 'windows', 'hosts', 'groups'];
 const SCHEDULE_GRACE_MIN = 30;
 const DAY_NAMES = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'];
 
@@ -24346,6 +26218,14 @@ function schedule_host_ids(array $sched): array {
     if ($sched['targets'] === 'hosts') {
         return array_values(array_filter(array_map('intval', json_decode($sched['host_ids'], true) ?: [])));
     }
+    if ($sched['targets'] === 'groups') {
+        // Cards in the groups right now that have an agent (no agent = nothing to update).
+        $agents = agent_summaries();
+        $ids = array_values(array_filter(hosts_in_groups(json_decode((string) ($sched['group_ids'] ?? ''), true) ?: []),
+            fn($hid) => isset($agents[$hid])));
+        sort($ids);
+        return $ids;
+    }
     $ids = [];
     foreach (agent_summaries() as $hid => $a) {
         if ($sched['targets'] === 'all' || $a['platform'] === $sched['targets']) $ids[] = $hid;
@@ -24371,6 +26251,7 @@ function schedule_row(array $s): array {
         'atTime' => $s['at_time'],
         'targets' => $s['targets'],
         'hostIds' => array_map('intval', json_decode($s['host_ids'], true) ?: []),
+        'groupIds' => array_map('intval', json_decode((string) ($s['group_ids'] ?? ''), true) ?: []),
         'nextRun' => $next ? $next->getTimestamp() * 1000 : null,
         'lastRun' => $last ? [
             'startedAt' => (int) $last['started_at'],
@@ -24397,16 +26278,27 @@ function schedule_fields(array $in): array {
     if (!in_array($targets, SCHEDULE_TARGETS, true)) throw new InvalidArgumentException('Unknown target.');
     $hostIds = array_values(array_unique(array_filter(array_map('intval', (array) ($in['hostIds'] ?? [])))));
     if ($targets === 'hosts' && !$hostIds) throw new InvalidArgumentException('Pick at least one host.');
+    $groupIds = array_values(array_unique(array_filter(array_map('intval', (array) ($in['groupIds'] ?? [])))));
+    if ($groupIds) {
+        $known = array_map('intval', db()->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN));
+        $groupIds = array_values(array_intersect($groupIds, $known));
+    }
+    if ($targets === 'groups' && !$groupIds) throw new InvalidArgumentException('Pick at least one group.');
     return [
         'name' => $name, 'job_type' => $type, 'params' => json_encode(job_params($type, (array) ($in['params'] ?? []))),
         'days' => $days, 'at_time' => $time, 'targets' => $targets,
         'host_ids' => json_encode($targets === 'hosts' ? $hostIds : []),
+        'group_ids' => json_encode($targets === 'groups' ? $groupIds : []),
         'enabled' => array_key_exists('enabled', $in) ? (int) (bool) $in['enabled'] : 1,
     ];
 }
 
-/** Queues the schedule's jobs now and records the run. */
-function run_schedule(array $sched, bool $manual = false): array {
+/**
+ * Queues the schedule's jobs now and records the run. $change: the window's
+ * change record (scheduled runs); a manual "Run now" gets its own record,
+ * requested by $user.
+ */
+function run_schedule(array $sched, bool $manual = false, ?array $change = null, ?array $user = null): array {
     $params = json_decode($sched['params'], true) ?: [];
     $res = create_jobs(schedule_host_ids($sched), $sched['job_type'], $params,
                        $sched['created_by'] !== null ? (int) $sched['created_by'] : null, (int) $sched['id']);
@@ -24419,6 +26311,15 @@ function run_schedule(array $sched, bool $manual = false): array {
     }
     db()->prepare('INSERT INTO schedule_runs (schedule_id, started_at, manual, job_ids, skipped, finished_at, summary) VALUES (?, ?, ?, ?, ?, ?, ?)')
         ->execute([$sched['id'], $now, $manual ? 1 : 0, json_encode($res['created']), json_encode($res['skipped']), $finished, $summary]);
+    $runId = (int) db()->lastInsertId();
+    if ($change !== null) {
+        change_started($change, $runId, $res);
+    } else {
+        $res['change'] = change_record_manual($res, $sched['job_type'], $params, $user, "Run now: {$sched['name']}", (int) $sched['id'], $runId);
+    }
+    audit_log('schedule.run', ($manual ? 'Ran' : 'Window ran for') . " schedule \"{$sched['name']}\": " . count($res['created'])
+        . ' job(s) queued, ' . count($res['skipped']) . ' skipped', "schedule #{$sched['id']}",
+        ['jobIds' => $res['created'], 'skipped' => $res['skipped']], 'ok', $user, !$manual);
     if ($finished !== null && !$manual) {
         notify_all("WebMonitor: scheduled \"{$sched['name']}\" didn't run", $summary . "\n" . skipped_lines($res['skipped']), 'warning');
     }
@@ -24444,9 +26345,15 @@ function process_schedules(): void {
             $pdo->prepare('UPDATE update_schedules SET last_run_key = ? WHERE id = ?')->execute([$key, $s['id']]);
             $lateMin = ($now->getTimestamp() - $occ->getTimestamp()) / 60;
             if ($lateMin > SCHEDULE_GRACE_MIN) continue;   // missed (server down); wait for the next one
-            run_schedule($s);
+            if (in_array($s['job_type'], CHANGE_JOB_TYPES, true)) {
+                $gate = change_gate($s, $occ);   // change record: approved / not rejected?
+                if ($gate['run']) run_schedule($s, false, $gate['change']);
+            } else {
+                run_schedule($s);
+            }
         }
         report_finished_runs();
+        change_process();
     } finally {
         $pdo->query("SELECT RELEASE_LOCK('webmonitor_schedules')");
     }
@@ -27348,6 +29255,115 @@ CREATE TABLE IF NOT EXISTS flexlm_checkouts (
   KEY user_idx (username),
   KEY started_idx (started_at),
   CONSTRAINT flexlm_checkouts_server FOREIGN KEY (server_id) REFERENCES flexlm_servers (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/migrations/030_groups.sql")"
+cat > "$APP_DIR/migrations/030_groups.sql" <<'WEBMON_FILE_EOF'
+-- Card groups (Settings -> Groups), an optional group per card, and screens:
+-- named sets of groups the host view can be switched to (e.g. a wall display).
+CREATE TABLE IF NOT EXISTS card_groups (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(60) NOT NULL UNIQUE,
+  sort INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS group_id INT UNSIGNED NULL;
+ALTER TABLE hosts ADD CONSTRAINT fk_hosts_group FOREIGN KEY IF NOT EXISTS (group_id) REFERENCES card_groups(id) ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS screens (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(60) NOT NULL UNIQUE,
+  sort INT NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS screen_groups (
+  screen_id INT UNSIGNED NOT NULL,
+  group_id INT UNSIGNED NOT NULL,
+  sort INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (screen_id, group_id),
+  CONSTRAINT fk_screen_groups_screen FOREIGN KEY (screen_id) REFERENCES screens(id) ON DELETE CASCADE,
+  CONSTRAINT fk_screen_groups_group FOREIGN KEY (group_id) REFERENCES card_groups(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/migrations/031_multi_groups.sql")"
+cat > "$APP_DIR/migrations/031_multi_groups.sql" <<'WEBMON_FILE_EOF'
+-- A card can be in several groups (replaces hosts.group_id, keeping existing
+-- assignments), and update schedules can target groups (targets = 'groups').
+CREATE TABLE IF NOT EXISTS host_group_members (
+  host_id INT UNSIGNED NOT NULL,
+  group_id INT UNSIGNED NOT NULL,
+  PRIMARY KEY (host_id, group_id),
+  INDEX idx_group (group_id),
+  CONSTRAINT fk_hgm_host FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_hgm_group FOREIGN KEY (group_id) REFERENCES card_groups(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+INSERT IGNORE INTO host_group_members (host_id, group_id) SELECT id, group_id FROM hosts WHERE group_id IS NOT NULL;
+ALTER TABLE hosts DROP FOREIGN KEY IF EXISTS fk_hosts_group;
+ALTER TABLE hosts DROP COLUMN IF EXISTS group_id;
+ALTER TABLE update_schedules ADD COLUMN IF NOT EXISTS group_ids TEXT NULL AFTER host_ids;
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/migrations/032_change_audit.sql")"
+cat > "$APP_DIR/migrations/032_change_audit.sql" <<'WEBMON_FILE_EOF'
+-- Change management for updates and an audit log.
+--
+-- change_records: one per change (a scheduled update window or a manual job
+-- batch): what was planned (hosts, pending packages), who requested and
+-- approved it, and the outcome per host. Kept indefinitely; jobs themselves
+-- are pruned after 180 days.
+CREATE TABLE IF NOT EXISTS change_records (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  source VARCHAR(10) NOT NULL,                 -- schedule | manual
+  schedule_id INT UNSIGNED NULL,
+  occurrence_key VARCHAR(20) NULL,             -- scheduled: 'Y-m-d H:i' of the window
+  schedule_run_id BIGINT UNSIGNED NULL,
+  title VARCHAR(120) NOT NULL,
+  job_type VARCHAR(24) NOT NULL,
+  params VARCHAR(500) NOT NULL DEFAULT '{}',
+  planned_at BIGINT UNSIGNED NOT NULL,
+  -- planned | pending_approval | approved | rejected | in_progress |
+  -- completed | partial | failed | skipped | cancelled
+  status VARCHAR(16) NOT NULL,
+  host_ids TEXT NOT NULL,
+  planned TEXT NOT NULL,                       -- {hostId: {host, packages: [...]}} at creation
+  job_ids TEXT NOT NULL,
+  outcome MEDIUMTEXT NULL,                     -- {hostId: {host, status, summary, exitCode, output}}
+  skipped TEXT NULL,
+  verification TEXT NULL,                      -- {hostId: {stillPending: [...]}} from the next inventory
+  requested_by INT UNSIGNED NULL,
+  requested_name VARCHAR(60) NULL,
+  decided_by INT UNSIGNED NULL,
+  decided_name VARCHAR(60) NULL,
+  decided_at BIGINT UNSIGNED NULL,
+  decision_note VARCHAR(500) NULL,
+  created_at BIGINT UNSIGNED NOT NULL,
+  started_at BIGINT UNSIGNED NULL,
+  finished_at BIGINT UNSIGNED NULL,
+  verified_at BIGINT UNSIGNED NULL,
+  notice_sent_at BIGINT UNSIGNED NULL,
+  report_sent_at BIGINT UNSIGNED NULL,
+  UNIQUE KEY uq_occurrence (schedule_id, occurrence_key),
+  INDEX idx_status (status),
+  INDEX idx_planned (planned_at)
+) ENGINE=InnoDB;
+
+-- Append-only audit trail. Each row's hash covers its content and the
+-- previous row's hash, so editing or deleting a row breaks the chain.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ts BIGINT UNSIGNED NOT NULL,
+  user_id INT UNSIGNED NULL,
+  username VARCHAR(60) NULL,                   -- NULL = WebMonitor itself (schedules, cron)
+  ip VARCHAR(45) NULL,
+  action VARCHAR(40) NOT NULL,
+  target VARCHAR(120) NULL,
+  summary VARCHAR(500) NOT NULL,
+  details TEXT NULL,
+  outcome VARCHAR(10) NOT NULL DEFAULT 'ok',   -- ok | denied | failed
+  prev_hash CHAR(64) NOT NULL,
+  hash CHAR(64) NOT NULL,
+  INDEX idx_ts (ts),
+  INDEX idx_action (action),
+  INDEX idx_user (username)
 ) ENGINE=InnoDB;
 WEBMON_FILE_EOF
 

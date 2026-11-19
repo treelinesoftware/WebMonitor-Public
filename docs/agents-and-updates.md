@@ -51,6 +51,51 @@ server's timezone. WebMonitor warns about clashes, such as a Proxmox host
 rebooting while its VMs are being updated, or the WebMonitor server rebooting
 while other hosts' jobs run.
 
+To update by group, pick **Groups** under Hosts and tick one or more groups
+(Settings → Groups). The group's cards are looked up each time the window runs,
+so cards added to a group later are included; cards without an agent are left
+out. Removing a group takes it off its schedules, and a schedule left with no
+groups is turned off.
+
+## Change management and audit log
+
+Every update window, and every manual update, reboot, agent upgrade or
+service restart, gets a **change record** (CHG-000123) under
+**Updates → Change records**. It keeps:
+
+- what was planned: the hosts and, for updates, each host's pending packages
+  when the record was made;
+- who requested it, and who approved or rejected it (with their note);
+- the result on each host: job status, summary, the end of its output and a
+  SHA-256 of the full output;
+- a check after the next inventory of which planned packages are still pending.
+
+Records are kept indefinitely (job history is pruned after 180 days) and can
+be exported as CSV.
+
+**Settings → Change management** sets:
+
+- **Change list**: the email addresses that get change emails, sent through
+  your email channel's SMTP settings (alert emails are unaffected). They get an
+  advance notice for each scheduled window, a notice when a manual change
+  starts (optional), approvals and rejections, and a completion report.
+- **Advance notice**: how many hours before a scheduled window its change
+  record is raised and emailed (0 = when it runs). Hosts are checked again when
+  the window runs.
+- **Require approval**: a scheduled window then runs only if an admin
+  approved its change record beforehand; one not approved in time is skipped
+  and recorded. Manual changes count as approved by the admin who starts them.
+  Any planned window can be rejected, with a reason, whether or not approval is
+  on.
+
+**Reports → Audit log** (admins) lists everything changed in WebMonitor:
+sign-ins (including failed and locked-out ones), every settings, host, user,
+group, schedule and job change made in the dashboard (with what was sent,
+passwords and tokens redacted), schedule runs and the change-record history.
+Filter it, export it as CSV, or use **Verify integrity**: each entry is chained
+to the one before by a SHA-256 hash, so an entry edited or deleted directly in
+the database shows up as a break.
+
 ## Remove an agent
 
 On Linux, run the installer with `--uninstall` (`sudo bash install.sh --uninstall`),

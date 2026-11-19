@@ -6,7 +6,7 @@
 //   POST {hostIds: [], type, params}  -> queue jobs (admins)
 //        -> {created: [ids], skipped: [{hostId, host, reason}]}
 //   DELETE ?id=N        -> cancel a queued job (admins)
-require_once __DIR__ . '/../includes/jobs.php';
+require_once __DIR__ . '/../includes/schedules.php';   // jobs, change records
 require_once __DIR__ . '/../includes/auth.php';
 header('Content-Type: application/json');
 $me = require_api_auth_admin_writes();
@@ -58,7 +58,10 @@ if ($method === 'POST') {
         echo json_encode(['error' => 'choose at least one host']);
         exit;
     }
-    echo json_encode(create_jobs($hostIds, $type, (array) ($input['params'] ?? []), $me['id']));
+    $params = (array) ($input['params'] ?? []);
+    $res = create_jobs($hostIds, $type, $params, $me['id']);
+    $res['change'] = change_record_manual($res, $type, $params, $me, job_label($type, job_params($type, $params)));
+    echo json_encode($res);
     exit;
 }
 

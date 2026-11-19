@@ -9,7 +9,7 @@
 //   POST ?id=ID&action=check     -> check now (network checks); admins
 //   POST ?id=ID&action=restart   -> restart a watched agent service (agent job); admins
 require_once __DIR__ . '/../includes/services.php';
-require_once __DIR__ . '/../includes/jobs.php';
+require_once __DIR__ . '/../includes/schedules.php';   // jobs, change records
 require_once __DIR__ . '/../includes/auth.php';
 header('Content-Type: application/json');
 $user = require_api_auth_admin_writes();
@@ -64,6 +64,7 @@ if ($method === 'POST' && $id && ($_GET['action'] ?? '') === 'restart') {
     }
     $r = create_jobs([(int) $s['host_id']], 'service_restart', ['service' => $s['target']], isset($user['id']) ? (int) $user['id'] : null);
     if (!$r['created']) fail(409, $r['skipped'][0]['reason'] ?? 'Could not queue the restart.');
+    change_record_manual($r, 'service_restart', ['service' => $s['target']], $user ?? null, "Restart {$s['target']} ({$s['name']})");
     echo json_encode(['ok' => true, 'jobId' => $r['created'][0]]);
     exit;
 }

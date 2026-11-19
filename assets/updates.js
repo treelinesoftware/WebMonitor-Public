@@ -72,8 +72,9 @@ function showView(name, subnet = '') {
     renderUpdates();
     loadJobs();
     loadSchedules();
+    loadChanges();   // changes.js
     let tick = 0;
-    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) loadSchedules(); }, 10000);
+    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) { loadSchedules(); loadChanges(); } }, 10000);
   }
   if (scans && typeof loadScanQueue === 'function') loadScanQueue();
   if (typeof securityViewShown === 'function') securityViewShown(security);   // vulns.js
@@ -220,6 +221,7 @@ async function startJobs(hostIds, type, params = {}) {
     }
     selectedHosts.clear();
     loadJobs();
+    loadChanges();   // changes.js
     return data;
   } catch (err) {
     alert(err.message);
@@ -387,6 +389,7 @@ const SCHEDULE_ACTIONS = {
   reboot: { jobType: 'reboot', label: 'Reboot' },
 };
 const TARGET_LABELS = { all: 'All agent hosts', linux: 'All Linux hosts', windows: 'All Windows hosts' };
+const groupLabel = id => (typeof groupNames !== 'undefined' && groupNames[id]) || `#${id}`;   // app.js
 let schedules = [];
 let scheduleConflicts = [];
 let editingSchedule = null;
@@ -474,6 +477,7 @@ function renderScheduleSummary() {
 }
 
 function scheduleTargets(s) {
+  if (s.targets === 'groups') return `Group${s.groupIds.length === 1 ? '' : 's'}: ${s.groupIds.map(groupLabel).join(', ') || '(none)'}`;
   if (s.targets !== 'hosts') return TARGET_LABELS[s.targets];
   return s.hostIds.map(id => {
     const h = hostsById.get(id);
@@ -545,6 +549,9 @@ function renderScheduleForm(s = null) {
   const days = s ? s.days : 64;   // Sunday
   const targets = s ? s.targets : 'hosts';
   const picked = new Set(s ? s.hostIds : []);
+  const pickedGroups = new Set(s ? s.groupIds || [] : []);
+  const agentIds = new Set(agentHosts().map(h => h.id));
+  const groupAgents = id => [...hostsById.values()].filter(h => agentIds.has(h.id) && (h.groupIds || []).includes(id)).length;
   const hosts = agentHosts();
   scheduleForm.innerHTML = `
     <div class="form-grid">
@@ -560,14 +567,20 @@ function renderScheduleForm(s = null) {
       ${WEEKDAYS.map((d, i) => `<label><input type="checkbox" class="sf-day" value="${1 << i}" ${days & (1 << i) ? 'checked' : ''} /> ${d}</label>`).join('')}
     </div></div>
     <div><div class="field-label">Hosts</div><div class="choice-group">
-      ${[['hosts', 'Pick hosts'], ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
+      ${[['hosts', 'Pick hosts'], ['groups', 'Groups'], ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
         `<label><input type="radio" name="sf-targets" value="${v}" ${v === targets ? 'checked' : ''} /> ${l}</label>`).join('')}
     </div></div>
     <div id="sf-hosts" class="sf-hosts">${hosts.map(h => `
       <label class="check"><input type="checkbox" class="sf-host" value="${h.id}" ${picked.has(h.id) ? 'checked' : ''} />
         ${escapeHtml(h.name === h.ip ? h.ip : h.name)} <span class="muted small">${escapeHtml(h.ip)}${h.agent && h.agent.hypervisor ? ' · Proxmox host' : ''}</span></label>`).join('')}
     </div>
-    <p class="hint">Group-based targets ("All Linux" etc.) include hosts whose agent is added later. Hosts muted for
+    <div id="sf-groups" class="choice-group">${Object.keys(groupNames).length ? Object.entries(groupNames).map(([id, n]) => {
+        const c = groupAgents(Number(id));
+        return `<label><input type="checkbox" class="sf-group" value="${id}" ${pickedGroups.has(Number(id)) ? 'checked' : ''} />
+          ${escapeHtml(n)} <span class="muted small">${c} agent host${c === 1 ? '' : 's'}</span></label>`;
+      }).join('') : '<span class="muted small">No groups yet — add them in Settings → Groups.</span>'}</div>
+    <p class="hint">"Groups", "All Linux" and the like are worked out when the schedule runs, so they pick up cards added
+      to the group (or agents installed) later; cards without an agent are left out. Hosts muted for
       maintenance are skipped. Put hosts that depend on each other, like the Proxmox host and its VMs, in separate
       schedules at different times. Avoid 01:00–03:00 on the nights clocks change: a time that doesn't exist runs an
       hour later, and one that happens twice runs once.</p>
@@ -583,6 +596,7 @@ function renderScheduleForm(s = null) {
     document.getElementById('sf-reboot-wrap').style.display = a.jobType === 'updates' ? '' : 'none';
     const t = scheduleForm.querySelector('input[name="sf-targets"]:checked').value;
     document.getElementById('sf-hosts').style.display = t === 'hosts' ? '' : 'none';
+    document.getElementById('sf-groups').style.display = t === 'groups' ? '' : 'none';
   };
   document.getElementById('sf-action').addEventListener('change', syncVisibility);
   scheduleForm.querySelectorAll('input[name="sf-targets"]').forEach(r => r.addEventListener('change', syncVisibility));
@@ -611,6 +625,7 @@ function scheduleFormBody() {
     atTime: document.getElementById('sf-time').value,
     targets: scheduleForm.querySelector('input[name="sf-targets"]:checked').value,
     hostIds: [...scheduleForm.querySelectorAll('.sf-host:checked')].map(cb => +cb.value),
+    groupIds: [...scheduleForm.querySelectorAll('.sf-group:checked')].map(cb => +cb.value),
   };
 }
 

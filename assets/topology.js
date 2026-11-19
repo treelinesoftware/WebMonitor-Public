@@ -15,7 +15,7 @@ const PROXMOX_ICON = `<svg class="pve-icon" viewBox="0 0 24 24" role="img" aria-
 const HV_COLORS = ['#e57000', '#c2410c', '#b45309', '#be185d'];
 const DOCKER_COLORS = ['#2496ed', '#0e7490', '#4f46e5', '#0f766e'];
 
-let groupMode = ['host', 'location'].includes(document.querySelector('meta[name="user-grouping"]')?.content)
+let groupMode = ['host', 'location', 'group'].includes(document.querySelector('meta[name="user-grouping"]')?.content)
   ? document.querySelector('meta[name="user-grouping"]').content : 'subnet';
 
 function isProxmox(h) {

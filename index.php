@@ -12,12 +12,14 @@ $user = require_login_page();
 <meta name="subnet-gateways" content="<?= htmlspecialchars(json_encode((object) subnet_gateways()), ENT_QUOTES) ?>" />
 <meta name="app-version" content="<?= htmlspecialchars(app_version(), ENT_QUOTES) ?>" />
 <meta name="locations" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM locations ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
+<meta name="card-groups" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM card_groups ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
+<meta name="screens" content="<?= htmlspecialchars(json_encode(screens_list()), ENT_QUOTES) ?>" />
 <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES) ?>" />
 <title>WebMonitor</title>
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=56" />
+<link rel="stylesheet" href="assets/style.css?v=59" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -230,6 +232,18 @@ $user = require_login_page();
     </div>
     <div id="updates-table"></div>
     <div class="schedule-summary" id="schedule-summary"></div>
+    <div class="updates-h-row">
+      <h3 class="updates-h">Change records <span class="tab-count" id="changes-pending"></span></h3>
+      <div class="section-actions">
+        <div class="segmented" role="group" aria-label="Show changes">
+          <button type="button" class="group-btn active" data-changes="open">Open</button>
+          <button type="button" class="group-btn" data-changes="all">All</button>
+        </div>
+        <button type="button" class="section-btn admin-only" id="changes-csv">Export CSV</button>
+      </div>
+    </div>
+    <p class="hint" id="changes-hint"></p>
+    <div id="changes-table"></div>
     <h3 class="updates-h">Job history</h3>
     <div id="jobs-table"></div>
   </section>
@@ -239,6 +253,38 @@ $user = require_login_page();
       <button type="button" class="group-btn active" data-report="topology">Network topology</button>
       <button type="button" class="group-btn" data-report="devices">Devices</button>
       <button type="button" class="group-btn" data-report="traffic">Traffic</button>
+      <button type="button" class="group-btn admin-only" data-report="audit">Audit log</button>
+    </div>
+    <div class="report-panel hidden" data-report="audit">
+      <div class="report-head">
+        <div>
+          <h2 class="report-title">Audit log</h2>
+          <div class="muted small" id="audit-meta"></div>
+        </div>
+        <div class="section-actions no-print">
+          <button type="button" class="section-btn" id="audit-verify">Verify integrity</button>
+          <button type="button" class="section-btn" id="audit-csv">Export CSV</button>
+        </div>
+      </div>
+      <p class="hint no-print">Every change made in WebMonitor — sign-ins, settings, hosts, users, update jobs, schedules and change
+        records — with who, when and from where. Entries can't be edited from WebMonitor, and each one is chained to the one before
+        by a hash, so <strong>Verify integrity</strong> shows whether any were changed or removed in the database.</p>
+      <form class="audit-filters no-print" id="audit-filters">
+        <input type="search" id="audit-q" placeholder="Search summary, target, details…" />
+        <select id="audit-user"><option value="">Anyone</option><option value="(system)">WebMonitor (automatic)</option></select>
+        <select id="audit-action">
+          <option value="">All actions</option>
+          <option value="change.">Change records</option>
+          <option value="schedule.">Schedule runs</option>
+          <option value="auth.">Sign-ins</option>
+          <option value="api.">Changes made in the dashboard</option>
+          <option value="audit.">Audit log checks / exports</option>
+        </select>
+        <select id="audit-outcome"><option value="">Any outcome</option><option value="ok">OK</option><option value="denied">Denied</option><option value="failed">Failed</option></select>
+        <label>From <input type="date" id="audit-from" /></label>
+        <label>To <input type="date" id="audit-to" /></label>
+      </form>
+      <div id="audit-body"></div>
     </div>
     <div class="report-panel" data-report="topology">
     <div class="report-head">
@@ -299,7 +345,12 @@ $user = require_login_page();
       <button class="group-btn" data-group="subnet" type="button">Subnet</button>
       <button class="group-btn" data-group="host" type="button">Host</button>
       <button class="group-btn" data-group="location" type="button">Location</button>
+      <button class="group-btn" data-group="group" type="button">Group</button>
     </div>
+    <label class="screen-pick" id="screen-pick" title="Show only the groups picked for a screen (Settings → Groups)">
+      <span class="seg-label">Screen</span>
+      <select id="screen-select" aria-label="Screen"><option value="">All cards</option></select>
+    </label>
   </div>
 
   <section id="grid"></section>
@@ -308,19 +359,46 @@ $user = require_login_page();
 
 <div id="settings-backdrop" class="modal-backdrop hidden">
   <div class="modal settings-modal" role="dialog" aria-labelledby="settings-title">
-    <button id="settings-close" class="modal-close" aria-label="Close">&times;</button>
-    <h2 id="settings-title">Settings</h2>
-    <nav class="settings-tabs">
-      <button class="tab-btn active" data-panel="account">Account</button>
-      <button class="tab-btn" data-panel="display">Display</button>
-      <button class="tab-btn" data-panel="schedules">Schedules</button>
-      <button class="tab-btn admin-only" data-panel="users">Users</button>
-      <button class="tab-btn admin-only" data-panel="notifications">Notifications</button>
-      <button class="tab-btn admin-only" data-panel="subnets">Subnets</button>
-      <button class="tab-btn admin-only" data-panel="locations">Locations</button>
-      <button class="tab-btn admin-only" data-panel="homeassistant">Home Assistant</button>
-      <button class="tab-btn admin-only" data-panel="hosts">Add hosts</button>
-    </nav>
+    <aside class="settings-side">
+      <h2 class="settings-side-title">Settings</h2>
+      <nav class="settings-nav" aria-label="Settings sections">
+        <div class="settings-nav-group">
+          <div class="settings-nav-label">You</div>
+          <button type="button" class="settings-nav-item active" data-panel="account" data-desc="Your sign-in password.">Account</button>
+          <button type="button" class="settings-nav-item" data-panel="display" data-desc="Theme and how many host cards fit on a row. Saved for your account.">Display</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Monitoring</div>
+          <button type="button" class="settings-nav-item" data-panel="hosts" data-desc="Add hosts one at a time, or scan a network for them.">Add hosts</button>
+          <button type="button" class="settings-nav-item" data-panel="subnets" data-desc="Names, gateways and automatic discovery for each network.">Subnets</button>
+          <button type="button" class="settings-nav-item" data-panel="locations" data-desc="Rooms, buildings or racks to show on cards.">Locations</button>
+          <button type="button" class="settings-nav-item" data-panel="groups" data-desc="Your own card groups, and screens that show only some of them.">Groups &amp; screens</button>
+        </div>
+        <div class="settings-nav-group">
+          <div class="settings-nav-label">Updates</div>
+          <button type="button" class="settings-nav-item" data-panel="schedules" data-desc="Recurring update windows for hosts with an agent.">Update schedules</button>
+          <button type="button" class="settings-nav-item admin-only" data-panel="changes" data-desc="Change records, the change email list and optional approval.">Change management</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Alerts</div>
+          <button type="button" class="settings-nav-item" data-panel="notifications" data-desc="Where alerts are sent, what triggers them, and what was sent.">Notifications</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Administration</div>
+          <button type="button" class="settings-nav-item" data-panel="users" data-desc="Who can sign in, and whether they can change things or only look.">Users</button>
+          <button type="button" class="settings-nav-item" data-panel="homeassistant" data-desc="Link WebMonitor to Home Assistant.">Home Assistant</button>
+        </div>
+      </nav>
+    </aside>
+    <div class="settings-main">
+      <header class="settings-head">
+        <div>
+          <h3 class="settings-head-title" id="settings-title">Account</h3>
+          <p class="settings-head-desc" id="settings-desc"></p>
+        </div>
+        <button id="settings-close" class="modal-close" type="button" aria-label="Close settings">&times;</button>
+      </header>
+      <div class="settings-body" id="settings-body">
 
     <section class="settings-panel" data-panel="account">
       <h3>Change your password</h3>
@@ -433,6 +511,61 @@ $user = require_login_page();
       </form>
     </section>
 
+    <section class="settings-panel admin-only hidden" data-panel="groups">
+      <h3>Groups</h3>
+      <p class="hint">Sort cards into your own groups (e.g. Servers, Cameras, Office PCs). Tick a card's groups in its <strong>Edit</strong>
+        (a card can be in several), show the host view by <strong>Group</strong>, or target a group with an update schedule.
+        Removing a group takes it off its cards, screens and schedules.</p>
+      <div id="group-list"></div>
+      <form id="group-form" class="subnet-add">
+        <input type="text" id="group-name" maxlength="60" placeholder="New group, e.g. Servers, Cameras, Office PCs" />
+        <button type="submit" class="section-btn">Add group</button>
+        <span class="form-msg" id="group-msg"></span>
+      </form>
+
+      <h3>Screens</h3>
+      <p class="hint">A screen shows only the groups you tick, one section per group, in the order listed. Pick it from
+        <strong>Screen</strong> above the cards, or open <code>?screen=N</code> on a wall display to start on it.</p>
+      <div id="screen-list"></div>
+      <form id="screen-form" class="subnet-add">
+        <input type="text" id="screen-name" maxlength="60" placeholder="New screen, e.g. NOC wall, Cameras" />
+        <button type="submit" class="section-btn">Add screen</button>
+        <span class="form-msg" id="screen-msg"></span>
+      </form>
+    </section>
+
+    <section class="settings-panel admin-only hidden" data-panel="changes">
+      <p class="hint settings-intro">Every update window and every manual update, reboot, agent upgrade or service restart gets a change
+        record (Updates → Change records) and an entry in the audit log (Reports → Audit log).</p>
+      <div id="cm-email-warning" class="settings-raw"></div>
+      <form id="cm-form" class="settings-form settings-raw settings-cards">
+        <div class="settings-card">
+          <h3>Change emails</h3>
+          <p class="hint">Sent to their own list through your email channel in <strong>Notifications</strong>; alert emails are unaffected.</p>
+          <label>Email addresses (comma-separated)
+            <textarea id="cm-recipients" rows="2" placeholder="changes@example.com, it-manager@example.com"></textarea></label>
+          <label class="check"><input type="checkbox" id="cm-manual" /> Also email when a manual change starts</label>
+        </div>
+        <div class="settings-card">
+          <h3>Advance notice</h3>
+          <div class="num-unit"><input type="number" id="cm-lead" min="0" max="720" step="1" aria-label="Hours before" /> hours before each scheduled window</div>
+          <p class="hint">The change record is raised and emailed then (0 = when the window runs), listing the hosts and pending packages
+            at that moment. Hosts are checked again when the window runs.</p>
+        </div>
+        <div class="settings-card">
+          <h3>Approval</h3>
+          <label class="check"><input type="checkbox" id="cm-approval" /> Require approval before scheduled windows run</label>
+          <p class="hint check-hint">An admin approves each window in Updates → Change records; one not approved in time is skipped and
+            recorded. Manual changes count as approved by the admin who starts them. Any planned window can be rejected either way.</p>
+        </div>
+        <div class="form-row settings-actions">
+          <button type="submit" class="primary-btn">Save</button>
+          <button type="button" class="section-btn" id="cm-test">Send test email</button>
+          <span class="form-msg" id="cm-msg"></span>
+        </div>
+      </form>
+    </section>
+
     <section class="settings-panel admin-only hidden" data-panel="homeassistant">
       <h3>Home Assistant</h3>
       <p class="hint">WebMonitor reads Home Assistant's device list every hour: the names you gave devices, maker, model,
@@ -501,6 +634,8 @@ $user = require_login_page();
         <div id="scan-results"></div>
       </section>
     </section>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -607,15 +742,15 @@ $user = require_login_page();
   </div>
 </div>
 
-<script src="assets/app.js?v=52"></script>
-<script src="assets/topology.js?v=45"></script>
-<script src="assets/nas.js?v=45"></script>
+<script src="assets/app.js?v=54"></script>
+<script src="assets/topology.js?v=46"></script>
+<script src="assets/nas.js?v=47"></script>
 <script src="assets/history.js?v=45"></script>
-<script src="assets/settings.js?v=51"></script>
-<script src="assets/updates.js?v=53"></script>
+<script src="assets/settings.js?v=55"></script>
+<script src="assets/updates.js?v=55"></script>
 <script src="assets/configbackup.js?v=45"></script>
 <script src="assets/portmap.js?v=45"></script>
-<script src="assets/reports.js?v=45"></script>
+<script src="assets/reports.js?v=46"></script>
 <script src="assets/wireless.js?v=45"></script>
 <script src="assets/devices.js?v=50"></script>
 <script src="assets/traffic.js?v=45"></script>
@@ -624,6 +759,7 @@ $user = require_login_page();
 <script src="assets/services.js?v=1"></script>
 <script src="assets/network.js?v=3"></script>
 <script src="assets/flexlm.js?v=1"></script>
+<script src="assets/changes.js?v=1"></script>
 <script src="assets/help.js?v=3"></script>
 </body>
 </html>

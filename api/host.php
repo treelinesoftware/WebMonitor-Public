@@ -2,7 +2,7 @@
 // DELETE ?id=N                                     -> remove the host
 // PATCH  ?id=N {name: "..."}                       -> rename the host
 // PATCH  ?id=N {mutedUntil: ms|null, muteReason}   -> mute / unmute alerts
-// PATCH  ?id=N {device?, os?, community?, bwExempt?, locationId?} -> host settings
+// PATCH  ?id=N {device?, os?, community?, bwExempt?, locationId?, groupIds?} -> host settings
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/devicescan.php';
@@ -86,6 +86,20 @@ if ($method === 'PATCH') {
         }
         db()->prepare('UPDATE hosts SET location_id = ? WHERE id = ?')->execute([$loc, $id]);
         $out['locationId'] = $loc;
+    }
+    if (array_key_exists('groupIds', $input)) {
+        $want = array_values(array_unique(array_filter(array_map('intval', (array) $input['groupIds']))));
+        $known = array_map('intval', db()->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN));
+        if (array_diff($want, $known)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'unknown group']);
+            exit;
+        }
+        db()->prepare('DELETE FROM host_group_members WHERE host_id = ?')->execute([$id]);
+        $ins = db()->prepare('INSERT INTO host_group_members (host_id, group_id) VALUES (?, ?)');
+        foreach ($want as $g) $ins->execute([$id, $g]);
+        sort($want);
+        $out['groupIds'] = $want;
     }
     if (array_key_exists('bwExempt', $input)) {
         db()->prepare('UPDATE hosts SET bw_exempt = ? WHERE id = ?')->execute([$input['bwExempt'] ? 1 : 0, $id]);

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/audit.php';
 
 /**
  * Session-based login for the dashboard and its API.
@@ -79,7 +80,7 @@ function current_user(): ?array {
 
 const THEMES = ['system', 'dark', 'light'];
 const COLUMN_CHOICES = ['auto', '2', '3', '4'];
-const GROUPINGS = ['subnet', 'host', 'location'];
+const GROUPINGS = ['subnet', 'host', 'location', 'group'];
 
 /** Display preferences with defaults; unknown values fall back to defaults. */
 function normalize_prefs(array $p): array {
@@ -115,7 +116,10 @@ function require_api_auth(string $role = 'viewer'): array {
         echo json_encode(['error' => 'not logged in']);
         exit;
     }
+    audit_actor($user, true);
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+        // Every change made through the dashboard ends up in the audit log.
+        register_shutdown_function('audit_api_request', $user);
         $sent = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
         if (!hash_equals($_SESSION['csrf'], $sent)) {
             session_write_close();
@@ -190,6 +194,7 @@ function attempt_login(string $username, string $password): ?string {
 
     $wait = login_locked_for($username, $ip);
     if ($wait > 0) {
+        audit_log('auth.login_locked', "Sign-in as \"$username\" from $ip refused: too many failed attempts", $username, null, 'denied', null, true);
         return 'Too many failed attempts. Try again in ' . max(1, (int) ceil($wait / 60)) . ' minute(s).';
     }
 
@@ -208,7 +213,11 @@ function attempt_login(string $username, string $password): ?string {
     $pdo->prepare('DELETE FROM login_attempts WHERE ts < ?')
         ->execute([(int) round(microtime(true) * 1000) - 7 * 86400 * 1000]);
 
-    if (!$ok) return 'Incorrect username or password.';
+    if (!$ok) {
+        audit_log('auth.login_failed', "Failed sign-in as \"$username\" from $ip", $username, null, 'denied',
+                  $user ? ['id' => $user['id'], 'username' => $user['username']] : null);
+        return 'Incorrect username or password.';
+    }
 
     if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
         $pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?')
@@ -222,11 +231,16 @@ function attempt_login(string $username, string $password): ?string {
     $_SESSION['username'] = $user['username'];
     $_SESSION['csrf'] = bin2hex(random_bytes(32));
     $_SESSION['last_seen'] = time();
+    audit_log('auth.login', "Signed in from $ip", $user['username'], null, 'ok', ['id' => $user['id'], 'username' => $user['username']]);
     return null;
 }
 
 function logout(): void {
     start_session();
+    if (!empty($_SESSION['user_id'])) {
+        audit_log('auth.logout', 'Signed out', $_SESSION['username'] ?? null, null, 'ok',
+                  ['id' => (int) $_SESSION['user_id'], 'username' => (string) ($_SESSION['username'] ?? '')]);
+    }
     $_SESSION = [];
     $p = session_get_cookie_params();
     setcookie(session_name(), '', [

@@ -2,3 +2,5 @@ config.php
 .claude/settings.local.json
 __pycache__/
 .env
+.claude/worktrees/
+*.code-workspace
