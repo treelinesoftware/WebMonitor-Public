@@ -418,12 +418,13 @@ $user = require_login_page();
 <meta name="locations" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM locations ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
 <meta name="card-groups" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM card_groups ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
 <meta name="screens" content="<?= htmlspecialchars(json_encode(screens_list()), ENT_QUOTES) ?>" />
+<meta name="pro" content="<?= htmlspecialchars(json_encode(array_diff_key(pro_status(), ['catalog' => 1])), ENT_QUOTES) ?>" />
 <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES) ?>" />
 <title>WebMonitor</title>
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=59" />
+<link rel="stylesheet" href="assets/style.css?v=60" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -441,8 +442,12 @@ $user = require_login_page();
       <button class="view-btn nav-btn" data-view="updates" type="button">Updates <span class="tab-count" id="count-updates"></span></button>
       <button class="view-btn nav-btn" data-view="reports" type="button">Reports</button>
       <button class="view-btn nav-btn" data-view="scans" type="button">Scans</button>
+<?php if (pro_feature('vulns')): ?>
       <button class="view-btn nav-btn" data-view="security" type="button">Security <span class="tab-count" id="count-security"></span></button>
+<?php endif; ?>
+<?php if (pro_feature('flexlm')): ?>
       <button class="view-btn nav-btn" data-view="flexlm" type="button">Licences <span class="tab-count" id="count-flexlm"></span></button>
+<?php endif; ?>
     </nav>
     <div class="app-bar-right">
       <button type="button" class="scan-pill no-print" id="scan-pill" title="Open the scan queue">Scans · checking…</button>
@@ -548,34 +553,7 @@ $user = require_login_page();
     <div class="net-switch panel-box hidden" id="net-switch"></div>
   </section>
 
-  <section id="flexlm-view" class="hidden">
-    <div class="report-head">
-      <div><h2 class="report-title">Licences</h2><div class="muted small" id="flm-summary-line">FlexLM licence servers</div></div>
-      <div class="section-actions no-print">
-        <button type="button" class="primary-btn admin-only" id="flm-add">Add licence server</button>
-      </div>
-    </div>
-    <div id="flm-notice"></div>
-    <div class="svc-tiles" id="flm-tiles"></div>
-    <div class="host-toolbar">
-      <div class="segmented" role="group" aria-label="Show" id="flm-tabs">
-        <button class="tab-btn active" data-flm-tab="servers" type="button">Servers</button>
-        <button class="tab-btn" data-flm-tab="inuse" type="button">In use now <span class="tab-count" id="flm-count-inuse"></span></button>
-        <button class="tab-btn" data-flm-tab="history" type="button">History</button>
-      </div>
-      <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input type="search" id="flm-search" placeholder="Search server, feature, user, computer…" autocomplete="off" aria-label="Search licences" /></label>
-    </div>
-    <div id="flm-body"></div>
-    <details class="no-print sec-about"><summary>How licence monitoring works</summary>
-      <p class="hint">WebMonitor runs <code>lmutil lmstat -a</code> against each licence server on its schedule (every 5 minutes by default).
-        It records whether the licence server and its vendor daemons are up, how many licences of each feature are in use, when
-        they expire and who has them checked out. A server shows down after two failed checks in a row.</p>
-      <p class="hint">lmutil comes from Flexera and isn't included with WebMonitor. If the page says it's missing, see
-        <a href="#help=flexlm" data-help-link="flexlm">Help → FlexLM licences</a> for where to put it.</p>
-    </details>
-  </section>
-
+<?php pro_view('flexlm-view', 'flexlm'); ?>
   <section id="help-view" class="hidden">
     <div class="report-head">
       <div><h2 class="report-title">Help</h2><div class="muted small">Guides for installing, setting up and using WebMonitor</div></div>
@@ -589,32 +567,7 @@ $user = require_login_page();
     </div>
   </section>
 
-  <section id="security-view" class="hidden">
-    <div class="report-head">
-      <div><h2 class="report-title">Vulnerability report</h2><div class="muted small" id="sec-summary-line"></div></div>
-      <div class="section-actions no-print">
-        <select id="sec-scope" class="admin-only" aria-label="What to scan"></select>
-        <button type="button" class="section-btn admin-only" id="sec-start">Start scan</button>
-        <button type="button" class="section-btn" id="sec-print">Print / PDF</button>
-      </div>
-    </div>
-    <div id="sec-progress"></div>
-    <div id="sec-tiles" class="sec-tiles"></div>
-    <div id="sec-body"></div>
-    <details class="no-print sec-about"><summary>How scanning works</summary>
-      <p class="hint">nmap checks each device's top 1,000 TCP ports and identifies the services and versions. Built-in checks then look for
-        cleartext logins (Telnet, FTP), services open without a password (VNC, Redis, MongoDB, Docker), SMBv1, old TLS versions and weak
-        ciphers, expired certificates, login pages over plain HTTP and SNMP readable with "public".</p>
-      <p class="hint">Devices without an agent: known CVEs are looked up for each service version in the NVD database. These are
-        <em>version-based</em> and may include issues the vendor fixed without changing the version. Hosts with an agent: pending
-        security updates with the CVEs they fix (OSV database), antivirus state and pending reboots, like a logged-in scan.
-        Only product names and versions are sent to NVD and OSV, never addresses.</p>
-      <p class="hint">Severity follows CVSS: <strong>Critical</strong> 9.0–10, <strong>High</strong> 7.0–8.9, <strong>Medium</strong> 4.0–6.9,
-        <strong>Low</strong> 0.1–3.9, <strong>Info</strong> 0 (worth knowing, not a vulnerability). A full scan of every device takes a while;
-        it runs in the background and the page updates as it goes.</p>
-    </details>
-  </section>
-
+<?php pro_view('security-view', 'vulns'); ?>
   <section id="scans-view" class="hidden">
     <div class="report-head">
       <div><h2 class="report-title">Scan queue</h2><div class="muted small" id="scan-queue-summary"></div></div>
@@ -636,18 +589,7 @@ $user = require_login_page();
     </div>
     <div id="updates-table"></div>
     <div class="schedule-summary" id="schedule-summary"></div>
-    <div class="updates-h-row">
-      <h3 class="updates-h">Change records <span class="tab-count" id="changes-pending"></span></h3>
-      <div class="section-actions">
-        <div class="segmented" role="group" aria-label="Show changes">
-          <button type="button" class="group-btn active" data-changes="open">Open</button>
-          <button type="button" class="group-btn" data-changes="all">All</button>
-        </div>
-        <button type="button" class="section-btn admin-only" id="changes-csv">Export CSV</button>
-      </div>
-    </div>
-    <p class="hint" id="changes-hint"></p>
-    <div id="changes-table"></div>
+<?php pro_view('updates-changes', 'changes'); ?>
     <h3 class="updates-h">Job history</h3>
     <div id="jobs-table"></div>
   </section>
@@ -657,39 +599,11 @@ $user = require_login_page();
       <button type="button" class="group-btn active" data-report="topology">Network topology</button>
       <button type="button" class="group-btn" data-report="devices">Devices</button>
       <button type="button" class="group-btn" data-report="traffic">Traffic</button>
+<?php if (pro_feature('changes')): ?>
       <button type="button" class="group-btn admin-only" data-report="audit">Audit log</button>
+<?php endif; ?>
     </div>
-    <div class="report-panel hidden" data-report="audit">
-      <div class="report-head">
-        <div>
-          <h2 class="report-title">Audit log</h2>
-          <div class="muted small" id="audit-meta"></div>
-        </div>
-        <div class="section-actions no-print">
-          <button type="button" class="section-btn" id="audit-verify">Verify integrity</button>
-          <button type="button" class="section-btn" id="audit-csv">Export CSV</button>
-        </div>
-      </div>
-      <p class="hint no-print">Every change made in WebMonitor — sign-ins, settings, hosts, users, update jobs, schedules and change
-        records — with who, when and from where. Entries can't be edited from WebMonitor, and each one is chained to the one before
-        by a hash, so <strong>Verify integrity</strong> shows whether any were changed or removed in the database.</p>
-      <form class="audit-filters no-print" id="audit-filters">
-        <input type="search" id="audit-q" placeholder="Search summary, target, details…" />
-        <select id="audit-user"><option value="">Anyone</option><option value="(system)">WebMonitor (automatic)</option></select>
-        <select id="audit-action">
-          <option value="">All actions</option>
-          <option value="change.">Change records</option>
-          <option value="schedule.">Schedule runs</option>
-          <option value="auth.">Sign-ins</option>
-          <option value="api.">Changes made in the dashboard</option>
-          <option value="audit.">Audit log checks / exports</option>
-        </select>
-        <select id="audit-outcome"><option value="">Any outcome</option><option value="ok">OK</option><option value="denied">Denied</option><option value="failed">Failed</option></select>
-        <label>From <input type="date" id="audit-from" /></label>
-        <label>To <input type="date" id="audit-to" /></label>
-      </form>
-      <div id="audit-body"></div>
-    </div>
+<?php pro_view('reports-audit', 'changes'); ?>
     <div class="report-panel" data-report="topology">
     <div class="report-head">
       <div>
@@ -781,11 +695,20 @@ $user = require_login_page();
         <div class="settings-nav-group">
           <div class="settings-nav-label">Updates</div>
           <button type="button" class="settings-nav-item" data-panel="schedules" data-desc="Recurring update windows for hosts with an agent.">Update schedules</button>
-          <button type="button" class="settings-nav-item admin-only" data-panel="changes" data-desc="Change records, the change email list and optional approval.">Change management</button>
         </div>
         <div class="settings-nav-group admin-only">
           <div class="settings-nav-label">Alerts</div>
           <button type="button" class="settings-nav-item" data-panel="notifications" data-desc="Where alerts are sent, what triggers them, and what was sent.">Notifications</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Pro</div>
+          <button type="button" class="settings-nav-item" data-panel="pro" data-desc="Unlock WebMonitor Pro and choose which Pro features are on.">WebMonitor Pro</button>
+<?php if (pro_feature('changes')): ?>
+          <button type="button" class="settings-nav-item" data-panel="changes" data-desc="Change records, the change email list and optional approval.">Change management</button>
+<?php endif; ?>
+<?php if (pro_feature('remote')): ?>
+          <button type="button" class="settings-nav-item" data-panel="remote" data-desc="Remote buttons on host cards, and who may use them.">Remote access</button>
+<?php endif; ?>
         </div>
         <div class="settings-nav-group admin-only">
           <div class="settings-nav-label">Administration</div>
@@ -938,37 +861,11 @@ $user = require_login_page();
       </form>
     </section>
 
-    <section class="settings-panel admin-only hidden" data-panel="changes">
-      <p class="hint settings-intro">Every update window and every manual update, reboot, agent upgrade or service restart gets a change
-        record (Updates → Change records) and an entry in the audit log (Reports → Audit log).</p>
-      <div id="cm-email-warning" class="settings-raw"></div>
-      <form id="cm-form" class="settings-form settings-raw settings-cards">
-        <div class="settings-card">
-          <h3>Change emails</h3>
-          <p class="hint">Sent to their own list through your email channel in <strong>Notifications</strong>; alert emails are unaffected.</p>
-          <label>Email addresses (comma-separated)
-            <textarea id="cm-recipients" rows="2" placeholder="changes@example.com, it-manager@example.com"></textarea></label>
-          <label class="check"><input type="checkbox" id="cm-manual" /> Also email when a manual change starts</label>
-        </div>
-        <div class="settings-card">
-          <h3>Advance notice</h3>
-          <div class="num-unit"><input type="number" id="cm-lead" min="0" max="720" step="1" aria-label="Hours before" /> hours before each scheduled window</div>
-          <p class="hint">The change record is raised and emailed then (0 = when the window runs), listing the hosts and pending packages
-            at that moment. Hosts are checked again when the window runs.</p>
-        </div>
-        <div class="settings-card">
-          <h3>Approval</h3>
-          <label class="check"><input type="checkbox" id="cm-approval" /> Require approval before scheduled windows run</label>
-          <p class="hint check-hint">An admin approves each window in Updates → Change records; one not approved in time is skipped and
-            recorded. Manual changes count as approved by the admin who starts them. Any planned window can be rejected either way.</p>
-        </div>
-        <div class="form-row settings-actions">
-          <button type="submit" class="primary-btn">Save</button>
-          <button type="button" class="section-btn" id="cm-test">Send test email</button>
-          <span class="form-msg" id="cm-msg"></span>
-        </div>
-      </form>
+<?php pro_view('settings-changes', 'changes'); ?>
+    <section class="settings-panel admin-only hidden" data-panel="pro">
+      <div id="pro-status" class="settings-raw"></div>
     </section>
+<?php pro_view('settings-remote', 'remote'); ?>
 
     <section class="settings-panel admin-only hidden" data-panel="homeassistant">
       <h3>Home Assistant</h3>
@@ -1146,25 +1043,26 @@ $user = require_login_page();
   </div>
 </div>
 
-<script src="assets/app.js?v=54"></script>
+<script src="assets/app.js?v=55"></script>
 <script src="assets/topology.js?v=46"></script>
-<script src="assets/nas.js?v=47"></script>
+<script src="assets/nas.js?v=48"></script>
 <script src="assets/history.js?v=45"></script>
-<script src="assets/settings.js?v=55"></script>
-<script src="assets/updates.js?v=55"></script>
+<script src="assets/settings.js?v=56"></script>
+<script src="assets/updates.js?v=56"></script>
 <script src="assets/configbackup.js?v=45"></script>
 <script src="assets/portmap.js?v=45"></script>
-<script src="assets/reports.js?v=46"></script>
+<script src="assets/reports.js?v=47"></script>
 <script src="assets/wireless.js?v=45"></script>
 <script src="assets/devices.js?v=50"></script>
 <script src="assets/traffic.js?v=45"></script>
 <script src="assets/scans.js?v=48"></script>
-<script src="assets/vulns.js?v=2"></script>
 <script src="assets/services.js?v=1"></script>
 <script src="assets/network.js?v=3"></script>
-<script src="assets/flexlm.js?v=1"></script>
-<script src="assets/changes.js?v=1"></script>
-<script src="assets/help.js?v=3"></script>
+<?php foreach (['vulns' => 'vulns', 'flexlm' => 'flexlm', 'changes' => 'changes', 'remote' => 'remote'] as $js => $feature):
+    if (pro_feature($feature)): ?>
+<script src="pro/assets/<?= $js ?>.js?v=<?= htmlspecialchars(app_version(), ENT_QUOTES) ?>"></script>
+<?php endif; endforeach; ?>
+<script src="assets/help.js?v=4"></script>
 </body>
 </html>
 WEBMON_FILE_EOF
@@ -3698,201 +3596,17 @@ WEBMON_FILE_EOF
 mkdir -p "$(dirname "$APP_DIR/api/audit.php")"
 cat > "$APP_DIR/api/audit.php" <<'WEBMON_FILE_EOF'
 <?php
-// Audit log (Reports -> Audit log). Admins only.
-//   GET [?q=text&user=name&action=prefix&outcome=ok|denied|failed&from=ms&to=ms&limit=N&before=ID]
-//       -> {entries, more}
-//   GET ?format=csv[&same filters]   -> CSV export
-//   GET ?verify=1                    -> {ok, checked, brokenAt, reason}: re-checks the hash chain
-require_once __DIR__ . '/../includes/audit.php';
-require_once __DIR__ . '/../includes/auth.php';
-header('Content-Type: application/json');
-require_api_auth('admin');
-
-if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-    http_response_code(405);
-    echo json_encode(['error' => 'method not allowed']);
-    exit;
-}
-
-if (!empty($_GET['verify'])) {
-    $r = audit_verify();
-    audit_log('audit.verified', $r['ok'] ? "Audit log integrity checked: {$r['checked']} entries, chain intact"
-        : "Audit log integrity check FAILED at entry #{$r['brokenAt']}: {$r['reason']}", 'audit log', $r, $r['ok'] ? 'ok' : 'failed');
-    echo json_encode($r);
-    exit;
-}
-
-$where = [];
-$args = [];
-if (($q = trim((string) ($_GET['q'] ?? ''))) !== '') {
-    $where[] = '(summary LIKE ? OR target LIKE ? OR details LIKE ?)';
-    array_push($args, "%$q%", "%$q%", "%$q%");
-}
-if (($u = trim((string) ($_GET['user'] ?? ''))) !== '') {
-    if ($u === '(system)') {
-        $where[] = 'username IS NULL';
-    } else {
-        $where[] = 'username = ?';
-        $args[] = $u;
-    }
-}
-if (($a = trim((string) ($_GET['action'] ?? ''))) !== '') {
-    $where[] = 'action LIKE ?';
-    $args[] = str_replace(['%', '_'], ['\%', '\_'], $a) . '%';
-}
-if (in_array($_GET['outcome'] ?? '', ['ok', 'denied', 'failed'], true)) {
-    $where[] = 'outcome = ?';
-    $args[] = $_GET['outcome'];
-}
-if (!empty($_GET['from'])) { $where[] = 'ts >= ?'; $args[] = (int) $_GET['from']; }
-if (!empty($_GET['to'])) { $where[] = 'ts <= ?'; $args[] = (int) $_GET['to']; }
-$sqlWhere = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-
-if (($_GET['format'] ?? '') === 'csv') {
-    audit_log('audit.exported', 'Exported the audit log as CSV', 'audit log', ['filters' => array_diff_key($_GET, ['format' => 1])]);
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="webmonitor-audit-' . date('Ymd-His') . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['ID', 'Time', 'User', 'IP', 'Action', 'Target', 'Summary', 'Outcome', 'Details', 'Hash', 'Previous hash']);
-    $stmt = db()->prepare("SELECT * FROM audit_log$sqlWhere ORDER BY id");
-    $stmt->execute($args);
-    while ($r = $stmt->fetch()) {
-        fputcsv($out, [$r['id'], date('Y-m-d H:i:s', intdiv((int) $r['ts'], 1000)), $r['username'] ?? '(WebMonitor)', $r['ip'],
-                       $r['action'], $r['target'], $r['summary'], $r['outcome'], $r['details'], $r['hash'], $r['prev_hash']]);
-    }
-    exit;
-}
-
-$limit = max(1, min(500, (int) ($_GET['limit'] ?? 100)));
-if (!empty($_GET['before'])) {
-    $sqlWhere .= ($sqlWhere ? ' AND' : ' WHERE') . ' id < ?';
-    $args[] = (int) $_GET['before'];
-}
-$stmt = db()->prepare("SELECT * FROM audit_log$sqlWhere ORDER BY id DESC LIMIT " . ($limit + 1));
-$stmt->execute($args);
-$rows = $stmt->fetchAll();
-echo json_encode([
-    'entries' => array_map('audit_row', array_slice($rows, 0, $limit)),
-    'more' => count($rows) > $limit,
-    'users' => db()->query('SELECT DISTINCT username FROM audit_log WHERE username IS NOT NULL ORDER BY username')->fetchAll(PDO::FETCH_COLUMN),
-]);
+// WebMonitor Pro (pro/api/audit.php); 404 when Pro or the feature is off.
+require_once __DIR__ . '/../includes/pro.php';
+pro_api('audit', 'changes');
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/api/changes.php")"
 cat > "$APP_DIR/api/changes.php" <<'WEBMON_FILE_EOF'
 <?php
-// Change records for updates (Updates -> Change records) and their settings.
-//   GET  [?status=open|closed|all&limit=N&before=ID]  -> {changes, settings, emailReady}   (any user)
-//   GET  ?id=N                                        -> {change: {... planned, outcome, history}}
-//   GET  ?format=csv[&status=...]                     -> CSV export (admins)
-//   POST ?id=N&decision=approve|reject {note}         -> approve / reject (admins)
-//   GET  ?what=settings                               -> change-management settings
-//   PUT  ?what=settings {recipients, lead_hours, require_approval, notify_manual}  (admins)
-//   POST ?what=test                                   -> send a test email to the change list (admins)
-require_once __DIR__ . '/../includes/schedules.php';
-require_once __DIR__ . '/../includes/auth.php';
-header('Content-Type: application/json');
-$me = require_api_auth_admin_writes();
-
-function fail(int $code, string $msg): void {
-    http_response_code($code);
-    echo json_encode(['error' => $msg]);
-    exit;
-}
-
-$pdo = db();
-$method = $_SERVER['REQUEST_METHOD'];
-$id = (int) ($_GET['id'] ?? 0);
-$what = (string) ($_GET['what'] ?? '');
-$input = $method === 'GET' ? [] : (json_decode(file_get_contents('php://input'), true) ?? []);
-$emailReady = fn() => change_email_channel() !== null;
-
-if ($what === 'settings') {
-    if ($method === 'PUT') {
-        try {
-            save_change_settings($input);
-        } catch (InvalidArgumentException $e) {
-            fail(400, $e->getMessage());
-        }
-    } elseif ($method !== 'GET') {
-        fail(405, 'method not allowed');
-    }
-    echo json_encode(['settings' => change_settings(), 'emailReady' => $emailReady()]);
-    exit;
-}
-
-if ($what === 'test' && $method === 'POST') {
-    $err = change_email('WebMonitor change management: test message',
-        "This is a test from WebMonitor change management.\nChange notices, decisions and completion reports will be sent to this list.\n");
-    if ($err !== null) fail(400, "Could not send: $err");
-    echo json_encode(['ok' => true]);
-    exit;
-}
-
-if ($method === 'POST' && $id) {
-    try {
-        $c = change_decide($id, (string) ($_GET['decision'] ?? ''), (string) ($input['note'] ?? ''), $me);
-    } catch (InvalidArgumentException $e) {
-        fail(400, $e->getMessage());
-    }
-    echo json_encode(['change' => change_row($c, true)]);
-    exit;
-}
-
-if ($method !== 'GET') fail(405, 'method not allowed');
-
-if ($id) {
-    $c = change_get($id);
-    if (!$c) fail(404, 'Change not found.');
-    echo json_encode(['change' => change_row($c, true)]);
-    exit;
-}
-
-$status = (string) ($_GET['status'] ?? 'all');
-$where = match ($status) {
-    'open' => "status IN ('planned', 'pending_approval', 'approved', 'in_progress')",
-    'closed' => "status NOT IN ('planned', 'pending_approval', 'approved', 'in_progress')",
-    default => '1',
-};
-
-if (($_GET['format'] ?? '') === 'csv') {
-    if (!is_admin($me)) fail(403, 'admin access required');
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="webmonitor-changes-' . date('Ymd-His') . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputcsv($out, ['Change', 'Status', 'Source', 'Title', 'Action', 'Window / started', 'Requested by', 'Decision by', 'Decided at',
-                   'Decision note', 'Started', 'Finished', 'Hosts', 'Planned packages', 'Results', 'Skipped', 'Still pending after verification']);
-    $rows = $pdo->query("SELECT * FROM change_records WHERE $where ORDER BY id")->fetchAll();
-    $t = fn($ms) => $ms ? date('Y-m-d H:i:s', intdiv((int) $ms, 1000)) : '';
-    foreach ($rows as $c) {
-        $planned = json_decode($c['planned'], true) ?: [];
-        $outcome = json_decode((string) $c['outcome'], true) ?: [];
-        $ver = json_decode((string) $c['verification'], true) ?: [];
-        fputcsv($out, [
-            change_number((int) $c['id']), CHANGE_STATUS_LABELS[$c['status']] ?? $c['status'], $c['source'], $c['title'],
-            job_label($c['job_type'], json_decode($c['params'], true) ?: []), $t($c['planned_at']), $c['requested_name'] ?? 'WebMonitor',
-            $c['decided_name'], $t($c['decided_at']), $c['decision_note'], $t($c['started_at']), $t($c['finished_at']),
-            implode('; ', array_map(fn($p) => $p['host'], $planned)),
-            implode('; ', array_map(fn($p) => $p['host'] . ': ' . (is_array($p['packages'] ?? null)
-                ? implode(', ', array_map(fn($x) => $x['name'] . (isset($x['new']) ? ' ' . $x['new'] : ''), $p['packages'])) : '-'), $planned)),
-            implode('; ', array_map(fn($o) => "{$o['host']}: {$o['status']}" . ($o['summary'] ? " ({$o['summary']})" : ''), $outcome)),
-            implode('; ', array_map(fn($s) => "{$s['host']}: {$s['reason']}", json_decode((string) $c['skipped'], true) ?: [])),
-            implode('; ', array_map(fn($hid, $v) => ($planned[$hid]['host'] ?? "#$hid") . ': ' . (count($v['stillPending']) ? implode(', ', $v['stillPending']) : 'none'),
-                array_keys($ver), $ver)),
-        ]);
-    }
-    exit;
-}
-
-$limit = max(1, min(500, (int) ($_GET['limit'] ?? 50)));
-$before = (int) ($_GET['before'] ?? 0);
-$rows = $pdo->query("SELECT * FROM change_records WHERE $where" . ($before ? " AND id < $before" : '') . " ORDER BY id DESC LIMIT $limit")->fetchAll();
-echo json_encode([
-    'changes' => array_map('change_row', $rows),
-    'settings' => change_settings(),
-    'emailReady' => $emailReady(),
-    'pendingApproval' => (int) $pdo->query("SELECT COUNT(*) FROM change_records WHERE status = 'pending_approval'")->fetchColumn(),
-]);
+// WebMonitor Pro (pro/api/changes.php); 404 when Pro or the feature is off.
+require_once __DIR__ . '/../includes/pro.php';
+pro_api('changes', 'changes');
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/api/device-info.php")"
@@ -4008,115 +3722,9 @@ WEBMON_FILE_EOF
 mkdir -p "$(dirname "$APP_DIR/api/flexlm.php")"
 cat > "$APP_DIR/api/flexlm.php" <<'WEBMON_FILE_EOF'
 <?php
-// FlexLM licence servers (Licences tab).
-//   GET                              -> {lmutil, servers: [... with features and current checkouts]}
-//   GET ?id=ID&output=1              -> {output, checkedAt}: the last lmstat output
-//   GET ?usage=ID&days=1|7|30|90|365 -> licences in use per feature over time
-//   GET ?history=1&days=7&q=&server= -> checkout history and top users
-//   POST {name, target, interval, alert, downAfterMin, fullPct, expiryWarnDays, notes}  -> add; admins
-//   PUT ?id=ID {...}                 -> change; admins
-//   DELETE ?id=ID                    -> remove, with its history; admins
-//   POST ?id=ID&action=check         -> check now (the background job runs it within a minute); admins
-require_once __DIR__ . '/../includes/flexlm.php';
-require_once __DIR__ . '/../includes/auth.php';
-header('Content-Type: application/json');
-$user = require_api_auth_admin_writes();
-session_write_close();
-
-function fail(int $code, string $msg): void {
-    http_response_code($code);
-    echo json_encode(['error' => $msg]);
-    exit;
-}
-
-function load_server(int $id): array {
-    $st = db()->prepare('SELECT * FROM flexlm_servers WHERE id = ?');
-    $st->execute([$id]);
-    $s = $st->fetch();
-    if (!$s) fail(404, 'That licence server no longer exists.');
-    return $s;
-}
-
-function overview(): array {
-    [$prefix, $problem] = flexlm_lmutil_command();
-    return ['lmutil' => ['path' => flexlm_lmutil_path(), 'ok' => $prefix !== null, 'problem' => $problem,
-                         'searched' => FLEXLM_LMUTIL_PATHS],
-            'servers' => flexlm_list()];
-}
-
-$method = $_SERVER['REQUEST_METHOD'];
-$id = (int) ($_GET['id'] ?? 0);
-
-if ($method === 'GET') {
-    if ($id && isset($_GET['output'])) {
-        $s = load_server($id);
-        echo json_encode(['output' => $s['last_output'], 'checkedAt' => $s['last_check_at'] !== null ? (int) $s['last_check_at'] : null]);
-        exit;
-    }
-    if (isset($_GET['usage'])) {
-        $s = load_server((int) $_GET['usage']);
-        $days = (int) ($_GET['days'] ?? 1);
-        if (!in_array($days, [1, 7, 30, 90, 365], true)) $days = 1;
-        echo json_encode(flexlm_usage_series((int) $s['id'], $days));
-        exit;
-    }
-    if (isset($_GET['history'])) {
-        $days = max(1, min(FLEXLM_CHECKOUTS_KEEP_DAYS, (int) ($_GET['days'] ?? 7)));
-        echo json_encode(flexlm_history($days, mb_substr(trim((string) ($_GET['q'] ?? '')), 0, 100),
-                                        !empty($_GET['server']) ? (int) $_GET['server'] : null));
-        exit;
-    }
-    echo json_encode(overview());
-    exit;
-}
-
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
-$pdo = db();
-
-if ($method === 'POST' && $id && ($_GET['action'] ?? '') === 'check') {
-    $s = load_server($id);
-    if (!$s['enabled']) fail(400, 'This server is paused. Edit it and untick Paused first.');
-    $pdo->prepare('UPDATE flexlm_servers SET check_requested = 1 WHERE id = ?')->execute([$id]);
-    echo json_encode(overview());
-    exit;
-}
-
-if ($method === 'POST') {
-    [$row, $err] = flexlm_validate($input);
-    if ($err) fail(400, $err);
-    $pdo->prepare('INSERT INTO flexlm_servers (name, target, interval_sec, enabled, alert, down_after_min, full_pct, expiry_warn_days, notes,
-                   check_requested, created_by, created_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 1, ?, ?)')
-        ->execute([$row['name'], $row['target'], $row['interval_sec'], (int) $row['alert'], $row['down_after_min'], $row['full_pct'],
-                   $row['expiry_warn_days'], $row['notes'], isset($user['id']) ? (int) $user['id'] : null, now_ms()]);
-    echo json_encode(['id' => (int) $pdo->lastInsertId()] + overview());
-    exit;
-}
-
-if ($method === 'PUT' && $id) {
-    $s = load_server($id);
-    [$row, $err] = flexlm_validate($input, $s);
-    if ($err) fail(400, $err);
-    $changed = $row['target'] !== $s['target'];
-    $pdo->prepare('UPDATE flexlm_servers SET name = ?, target = ?, interval_sec = ?, enabled = ?, alert = ?, down_after_min = ?, full_pct = ?,
-                   expiry_warn_days = ?, notes = ?' . ($changed ? ", status = 'pending', fail_count = 0, message = NULL, check_requested = 1" : '') . ' WHERE id = ?')
-        ->execute([$row['name'], $row['target'], $row['interval_sec'], (int) $row['enabled'], (int) $row['alert'], $row['down_after_min'],
-                   $row['full_pct'], $row['expiry_warn_days'], $row['notes'], $id]);
-    if ($changed) {
-        // A different server: its old features and open checkouts no longer apply.
-        $pdo->prepare('DELETE FROM flexlm_features WHERE server_id = ?')->execute([$id]);
-        $pdo->prepare('UPDATE flexlm_checkouts SET ended_at = last_seen WHERE server_id = ? AND ended_at IS NULL')->execute([$id]);
-    }
-    echo json_encode(overview());
-    exit;
-}
-
-if ($method === 'DELETE' && $id) {
-    $pdo->prepare('DELETE FROM flexlm_servers WHERE id = ?')->execute([$id]);
-    echo json_encode(overview());
-    exit;
-}
-
-fail(405, 'method not allowed');
+// WebMonitor Pro (pro/api/flexlm.php); 404 when Pro or the feature is off.
+require_once __DIR__ . '/../includes/pro.php';
+pro_api('flexlm', 'flexlm');
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/api/groups.php")"
@@ -5116,6 +4724,59 @@ if ($view === null || ($method === 'POST' && !empty($_GET['refresh']))) {
 echo json_encode($view);
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/api/pro.php")"
+cat > "$APP_DIR/api/pro.php" <<'WEBMON_FILE_EOF'
+<?php
+// WebMonitor Pro (Settings -> WebMonitor Pro).
+//   GET                        -> status: available, unlocked, features (any user)
+//   POST ?action=unlock {password}  -> unlock with the Pro password (admins)
+//   POST ?action=lock               -> lock again (admins)
+//   PUT  {features: {name: bool}}   -> switch Pro features on/off (admins)
+require_once __DIR__ . '/../includes/pro.php';
+require_once __DIR__ . '/../includes/auth.php';
+header('Content-Type: application/json');
+$me = require_api_auth_admin_writes();
+
+function fail(int $code, string $msg): void {
+    http_response_code($code);
+    echo json_encode(['error' => $msg]);
+    exit;
+}
+
+$method = $_SERVER['REQUEST_METHOD'];
+$input = $method === 'GET' ? [] : (json_decode(file_get_contents('php://input'), true) ?? []);
+$action = (string) ($_GET['action'] ?? '');
+
+if ($method !== 'GET') {
+    if (!pro_available()) fail(404, 'WebMonitor Pro is not installed on this server.');
+    require_once PRO_DIR . '/pro.php';
+    if ($method === 'POST' && $action === 'unlock') {
+        // Don't keep the password in the audit trail's copy of the request.
+        unset($input['password']);
+        $err = pro_unlock((string) (json_decode(file_get_contents('php://input'), true)['password'] ?? ''), $me);
+        if ($err !== null) fail(403, $err);
+    } elseif ($method === 'POST' && $action === 'lock') {
+        pro_lock();
+    } elseif ($method === 'PUT') {
+        if (!pro_unlocked()) fail(403, 'Unlock WebMonitor Pro first.');
+        pro_save_features((array) ($input['features'] ?? []));
+    } else {
+        fail(405, 'method not allowed');
+    }
+    echo json_encode(['ok' => true, 'reload' => true]);
+    exit;
+}
+echo json_encode(pro_status());
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/api/remote.php")"
+cat > "$APP_DIR/api/remote.php" <<'WEBMON_FILE_EOF'
+<?php
+// WebMonitor Pro (pro/api/remote.php); 404 when Pro or the feature is off.
+require_once __DIR__ . '/../includes/pro.php';
+pro_api('remote', 'remote');
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/api/scan-queue.php")"
 cat > "$APP_DIR/api/scan-queue.php" <<'WEBMON_FILE_EOF'
 <?php
@@ -5915,41 +5576,9 @@ WEBMON_FILE_EOF
 mkdir -p "$(dirname "$APP_DIR/api/vulns.php")"
 cat > "$APP_DIR/api/vulns.php" <<'WEBMON_FILE_EOF'
 <?php
-// Vulnerability scans (Security tab).
-//   GET                         -> report: {summary, hosts, findings, scans, nmap, subnets}
-//   POST {scope}                -> queue a scan ('all', 'subnet:192.168.60.0/24', 'host:12'); admins
-//   POST ?cancel=ID             -> cancel a queued or running scan; admins
-require_once __DIR__ . '/../includes/vulnscan.php';
-require_once __DIR__ . '/../includes/auth.php';
-header('Content-Type: application/json');
-$user = require_api_auth_admin_writes();
-
-function fail(int $code, string $msg): void {
-    http_response_code($code);
-    echo json_encode(['error' => $msg]);
-    exit;
-}
-
-$method = $_SERVER['REQUEST_METHOD'];
-if ($method === 'GET') {
-    echo json_encode(vuln_report());
-    exit;
-}
-if ($method !== 'POST') fail(405, 'method not allowed');
-
-if (isset($_GET['cancel'])) {
-    db()->prepare("UPDATE vuln_scans SET status = 'cancelled', finished_at = ? WHERE id = ? AND status IN ('queued', 'running')")
-        ->execute([now_ms(), (int) $_GET['cancel']]);
-    echo json_encode(vuln_report());
-    exit;
-}
-
-$input = json_decode(file_get_contents('php://input'), true) ?? [];
-$scope = (string) ($input['scope'] ?? 'all');
-if (!preg_match('#^(all|host:\d+|subnet:\d{1,3}\.\d{1,3}\.\d{1,3}\.0/24)$#', $scope)) fail(400, 'Unknown scan scope.');
-if (!vuln_targets($scope)) fail(400, 'Nothing to scan: no devices seen in the last ' . VULN_TARGET_SEEN_DAYS . ' days in that scope.');
-vuln_queue_scan($scope, isset($user['id']) ? (int) $user['id'] : null);
-echo json_encode(vuln_report());
+// WebMonitor Pro (pro/api/vulns.php); 404 when Pro or the feature is off.
+require_once __DIR__ . '/../includes/pro.php';
+pro_api('vulns', 'vulns');
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/api/wireless.php")"
@@ -6055,6 +5684,12 @@ function statusBadge(host) {
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 // Admin-only controls are hidden for viewers; the server enforces it too.
 const IS_ADMIN = document.querySelector('meta[name="user-role"]').content === 'admin';
+// WebMonitor Pro: {available, unlocked, features: {changes, remote, vulns, flexlm, group_schedules}}.
+let PRO = { available: false, unlocked: false, features: {} };
+try { PRO = JSON.parse(document.querySelector('meta[name="pro"]')?.content || '') || PRO; } catch (e) { /* free version */ }
+const proOn = name => !!(PRO.features && PRO.features[name]);
+// Hooks Pro scripts fill in (cardActions, cardBind, hostEditor, hostEditorSave).
+window.WM_PRO = window.WM_PRO || {};
 
 const headerClock = document.getElementById('header-clock');
 const clockFormatter = new Intl.DateTimeFormat([], {
@@ -6545,11 +6180,13 @@ function renderCard(host) {
       <button class="card-btn ping-btn" type="button" title="Check reachability now (TCP ports 80, 443, 22, 445, 3389)">Ping</button>
       <button class="card-btn details-btn" type="button" title="Show server details collected over SNMP">Details</button>
       ${IS_ADMIN ? '<button class="card-btn asset-scan-btn" type="button" title="Request an asset scan">Scan now</button>' : ''}
+      ${WM_PRO.cardActions ? WM_PRO.cardActions(host) : ''}
       <span class="ping-result"></span>
     </div>
   `;
 
   renderPingState(card, host.id);
+  if (WM_PRO.cardBind) WM_PRO.cardBind(card, host);   // Pro: remote access menu
 
   card.querySelector('.ping-btn').addEventListener('click', e => {
     e.stopPropagation();
@@ -8097,294 +7734,6 @@ yAcZqJrIQ+CtXHWOvx+4L9g3xWYH36FAPU1BzcrxDYoPwz8liP/O/wEF5IS/Sw7VOQAAAABJRU5E
 rkJggg==
 WEBMON_FILE_EOF
 
-mkdir -p "$(dirname "$APP_DIR/assets/changes.js")"
-cat > "$APP_DIR/assets/changes.js" <<'WEBMON_FILE_EOF'
-// Change management: change records (Updates view), their settings
-// (Settings -> Change management) and the audit log (Reports -> Audit log).
-// Uses api(), escapeHtml(), IS_ADMIN from app.js; jsonApi(), setMsg() from settings.js.
-
-const CHANGE_BADGE = {
-  planned: 'info', pending_approval: 'warn', approved: 'ok', rejected: 'bad', in_progress: 'info',
-  completed: 'ok', partial: 'warn', failed: 'bad', skipped: 'muted', cancelled: 'muted',
-};
-let changesFilter = 'open';
-let changeSettings = null;
-const openChanges = new Set();   // expanded rows, kept across refreshes
-
-function fmtChangeTime(ms) {
-  return ms ? new Date(ms).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
-}
-
-function changeBadge(c) {
-  return `<span class="chg-badge chg-${CHANGE_BADGE[c.status] || 'muted'}">${escapeHtml(c.statusLabel)}</span>`;
-}
-
-// ---- Updates -> Change records ----
-
-async function loadChanges() {
-  const box = document.getElementById('changes-table');
-  if (!box) return;
-  try {
-    const resp = await api(`api/changes.php?status=${changesFilter}&limit=${changesFilter === 'open' ? 200 : 100}`);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not load change records');
-    changeSettings = data.settings;
-    const pend = document.getElementById('changes-pending');
-    pend.textContent = data.pendingApproval ? `${data.pendingApproval} awaiting approval` : '';
-    pend.classList.toggle('warn-text', !!data.pendingApproval);
-    document.getElementById('changes-hint').innerHTML = `${data.settings.require_approval
-      ? '<strong>Approval is on:</strong> scheduled windows run only once approved.' : 'Scheduled windows run unless rejected.'}
-      ${data.settings.lead_hours ? `Records are raised ${data.settings.lead_hours} h before each window.` : 'Records are raised when each window runs.'}
-      ${data.emailReady ? '' : IS_ADMIN ? ' <span class="warn-text">Change emails are off: set a change list and an email channel in Settings → Change management.</span>' : ''}`;
-    renderChanges(data.changes);
-  } catch (err) {
-    box.innerHTML = `<div class="switch-info-status details-error">${escapeHtml(err.message)}</div>`;
-  }
-}
-
-function renderChanges(list) {
-  const box = document.getElementById('changes-table');
-  if (!list.length) {
-    box.innerHTML = `<div class="switch-info-status">${changesFilter === 'open' ? 'No open changes.' : 'No change records yet.'}
-      Each update window and manual update, reboot or agent upgrade gets one.</div>`;
-    return;
-  }
-  box.innerHTML = `<div class="details-table-wrap updates-wrap"><table class="switch-info-table chg-table">
-    <thead><tr><th>Change</th><th>What</th><th>When</th><th>Hosts</th><th>Status</th><th>Requested / decided</th><th></th></tr></thead>
-    <tbody>${list.map(c => `
-      <tr data-id="${c.id}" class="chg-row">
-        <td class="nowrap"><button type="button" class="link-btn chg-toggle" aria-expanded="${openChanges.has(c.id)}">${escapeHtml(c.number)}</button></td>
-        <td><strong>${escapeHtml(c.title)}</strong><div class="muted small">${escapeHtml(c.action)}${c.packageCount ? ` · ${c.packageCount} package${c.packageCount === 1 ? '' : 's'}` : ''}</div></td>
-        <td class="nowrap small">${escapeHtml(fmtChangeTime(c.plannedAt))}<div class="muted">${c.source === 'schedule' ? 'scheduled' : 'manual'}</div></td>
-        <td class="wrap small">${escapeHtml(c.hosts.slice(0, 4).join(', '))}${c.hosts.length > 4 ? ` +${c.hosts.length - 4}` : ''}</td>
-        <td>${changeBadge(c)}</td>
-        <td class="small">${escapeHtml(c.requestedBy || 'WebMonitor')}${c.decidedBy ? `<div class="muted">${c.status === 'rejected' ? 'rejected' : 'approved'} by ${escapeHtml(c.decidedBy)}</div>` : ''}</td>
-        <td class="row-actions">${IS_ADMIN && c.status === 'pending_approval' ? '<button type="button" class="section-btn chg-approve">Approve</button>' : ''}
-          ${IS_ADMIN && ['planned', 'pending_approval', 'approved'].includes(c.status) ? '<button type="button" class="section-btn danger chg-reject">Reject</button>' : ''}</td>
-      </tr>
-      <tr class="chg-detail ${openChanges.has(c.id) ? '' : 'hidden'}" data-detail="${c.id}"><td colspan="7"><div class="chg-detail-body">Loading…</div></td></tr>`).join('')}
-    </tbody></table></div>`;
-  box.querySelectorAll('tr.chg-row').forEach(tr => {
-    const id = +tr.dataset.id;
-    tr.querySelector('.chg-toggle').addEventListener('click', () => toggleChange(id));
-    tr.querySelector('.chg-approve')?.addEventListener('click', () => decideChange(id, 'approve'));
-    tr.querySelector('.chg-reject')?.addEventListener('click', () => decideChange(id, 'reject'));
-    if (openChanges.has(id)) loadChangeDetail(id);
-  });
-}
-
-function toggleChange(id) {
-  const row = document.querySelector(`#changes-table tr[data-detail="${id}"]`);
-  const open = row.classList.toggle('hidden') === false;
-  document.querySelector(`#changes-table tr[data-id="${id}"] .chg-toggle`).setAttribute('aria-expanded', open);
-  if (open) { openChanges.add(id); loadChangeDetail(id); } else openChanges.delete(id);
-}
-
-async function loadChangeDetail(id) {
-  const body = document.querySelector(`#changes-table tr[data-detail="${id}"] .chg-detail-body`);
-  if (!body) return;
-  try {
-    const resp = await api(`api/changes.php?id=${id}`);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not load the change');
-    body.innerHTML = renderChangeDetail(data.change);
-  } catch (err) {
-    body.innerHTML = `<span class="details-error">${escapeHtml(err.message)}</span>`;
-  }
-}
-
-function pkgLine(p) {
-  return `${escapeHtml(p.name)}${p.new ? ` <span class="muted">${p.current ? `${escapeHtml(p.current)} → ` : ''}${escapeHtml(p.new)}</span>` : ''}${
-    p.kb ? ` <span class="muted">${escapeHtml(p.kb)}</span>` : ''}${p.security ? ' <span class="chg-badge chg-warn">security</span>' : ''}`;
-}
-
-function renderChangeDetail(c) {
-  const facts = [
-    ['Status', changeBadge(c)],
-    ['Action', escapeHtml(c.action)],
-    [c.source === 'schedule' ? 'Window' : 'Started', escapeHtml(fmtChangeTime(c.plannedAt))],
-    ['Requested by', escapeHtml(c.requestedBy || 'WebMonitor') + (c.source === 'schedule' ? ' (schedule)' : ' (manual)')],
-    c.decidedBy && ['Decision', `${escapeHtml(c.status === 'rejected' ? 'Rejected' : 'Approved')} by ${escapeHtml(c.decidedBy)} · ${escapeHtml(fmtChangeTime(c.decidedAt))}${
-      c.decisionNote ? `<div class="muted">${escapeHtml(c.decisionNote)}</div>` : ''}`],
-    c.finishedAt && ['Finished', escapeHtml(fmtChangeTime(c.finishedAt))],
-    ['Emails', `${c.noticeSentAt ? `notice ${escapeHtml(fmtChangeTime(c.noticeSentAt))}` : 'no notice sent'}${c.reportSentAt ? ` · report ${escapeHtml(fmtChangeTime(c.reportSentAt))}` : ''}`],
-  ].filter(Boolean);
-  const hostIds = [...new Set([...Object.keys(c.planned || {}), ...Object.keys(c.outcome || {})])];
-  const hosts = hostIds.map(hid => {
-    const p = (c.planned || {})[hid] || {};
-    const o = (c.outcome || {})[hid];
-    const v = (c.verification || {})[hid];
-    const pk = Array.isArray(p.packages) ? p.packages : null;
-    return `<details class="chg-host" ${hostIds.length === 1 ? 'open' : ''}><summary><strong>${escapeHtml((o && o.host) || p.host || '#' + hid)}</strong>
-        ${o ? `<span class="port-status ${o.status === 'succeeded' ? 'up' : 'down'}">${escapeHtml(o.status)}</span> <span class="muted small">${escapeHtml(o.summary || '')}</span>` : ''}
-        ${pk ? `<span class="muted small">· ${pk.length} planned package${pk.length === 1 ? '' : 's'}</span>` : 'packages' in p ? '<span class="muted small">· no update inventory when planned</span>' : ''}
-        ${v ? `<span class="small ${v.stillPending.length ? 'warn-text' : 'ok-text'}">· ${v.stillPending.length ? `${v.stillPending.length} still pending` : 'verified: none still pending'}</span>` : ''}
-      </summary>
-      ${pk && pk.length ? `<ul class="chg-pkgs">${pk.map(x => `<li>${pkgLine(x)}${v && v.stillPending.includes(x.name) ? ' <span class="warn-text small">still pending</span>' : ''}</li>`).join('')}</ul>` : ''}
-      ${o && o.output ? `<details class="chg-output"><summary class="small">Job #${o.jobId} output${o.exitCode != null ? ` · exit ${o.exitCode}` : ''}${
-        o.outputSha256 ? ` · <span class="mono" title="SHA-256 of the full output">${escapeHtml(o.outputSha256.slice(0, 16))}…</span>` : ''}</summary><pre class="job-output">${escapeHtml(o.output)}</pre></details>` : ''}
-    </details>`;
-  }).join('');
-  const skipped = (c.skipped || []).length ? `<h4>Skipped</h4><ul class="chg-pkgs">${c.skipped.map(s => `<li>${escapeHtml(s.host)}: <span class="muted">${escapeHtml(s.reason)}</span></li>`).join('')}</ul>` : '';
-  const history = (c.history || []).length ? `<h4>History</h4><ol class="chg-history">${c.history.map(h =>
-    `<li><span class="muted small">${escapeHtml(new Date(h.ts).toLocaleString())}</span> ${escapeHtml(h.summary)}${h.username ? ` <span class="muted small">— ${escapeHtml(h.username)}</span>` : ''}</li>`).join('')}</ol>` : '';
-  return `<dl class="details-grid chg-facts">${facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    <h4>Hosts</h4>${hosts || '<p class="muted small">No hosts.</p>'}${skipped}${history}`;
-}
-
-async function decideChange(id, decision) {
-  const verb = decision === 'approve' ? 'Approve' : 'Reject';
-  const note = prompt(decision === 'approve' ? 'Approve this change? Optional note:' : 'Reject this change — it will not run. Reason (required):', '');
-  if (note === null) return;
-  try {
-    await jsonApi(`api/changes.php?id=${id}&decision=${decision}`, 'POST', { note });   // settings.js
-    openChanges.add(id);
-    loadChanges();
-  } catch (err) {
-    alert(`${verb}: ${err.message}`);
-  }
-}
-
-document.querySelectorAll('[data-changes]').forEach(b => b.addEventListener('click', () => {
-  changesFilter = b.dataset.changes;
-  document.querySelectorAll('[data-changes]').forEach(x => x.classList.toggle('active', x === b));
-  loadChanges();
-}));
-document.getElementById('changes-csv').addEventListener('click', () => {
-  location.href = `api/changes.php?format=csv&status=${changesFilter}`;
-});
-
-// ---- Settings -> Change management ----
-
-async function loadChangeSettings() {
-  try {
-    const data = await jsonApi('api/changes.php?what=settings', 'GET');
-    const s = data.settings;
-    document.getElementById('cm-recipients').value = s.recipients;
-    document.getElementById('cm-lead').value = s.lead_hours;
-    document.getElementById('cm-approval').checked = s.require_approval;
-    document.getElementById('cm-manual').checked = s.notify_manual;
-    showChangeEmailWarning(data.emailReady, s.recipients);
-  } catch (err) {
-    setMsg(document.getElementById('cm-msg'), err.message, false);
-  }
-}
-
-function showChangeEmailWarning(ready, recipients) {
-  document.getElementById('cm-email-warning').innerHTML = ready ? ''
-    : `<p class="hint warn-text">${recipients ? 'Change emails need an enabled email channel: add one under Notifications (its SMTP settings are used; its To address is not).'
-      : 'No change list yet — change records and the audit log still work, but no change emails are sent.'}</p>`;
-}
-
-document.getElementById('cm-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const msg = document.getElementById('cm-msg');
-  try {
-    const data = await jsonApi('api/changes.php?what=settings', 'PUT', {
-      recipients: document.getElementById('cm-recipients').value,
-      lead_hours: Number(document.getElementById('cm-lead').value || 0),
-      require_approval: document.getElementById('cm-approval').checked,
-      notify_manual: document.getElementById('cm-manual').checked,
-    });
-    document.getElementById('cm-recipients').value = data.settings.recipients;
-    showChangeEmailWarning(data.emailReady, data.settings.recipients);
-    setMsg(msg, 'Saved');
-  } catch (err) {
-    setMsg(msg, err.message, false);
-  }
-});
-
-document.getElementById('cm-test').addEventListener('click', async () => {
-  const msg = document.getElementById('cm-msg');
-  setMsg(msg, 'Sending…');
-  try {
-    await jsonApi('api/changes.php?what=test', 'POST', {});
-    setMsg(msg, 'Test email sent to the change list (save first if you just changed it)');
-  } catch (err) {
-    setMsg(msg, err.message, false);
-  }
-});
-
-// ---- Reports -> Audit log ----
-
-let auditEntries = [];
-let auditTimer = null;
-
-function auditQuery() {
-  const p = new URLSearchParams();
-  const v = id => document.getElementById(id).value.trim();
-  if (v('audit-q')) p.set('q', v('audit-q'));
-  if (v('audit-user')) p.set('user', v('audit-user'));
-  if (v('audit-action')) p.set('action', v('audit-action'));
-  if (v('audit-outcome')) p.set('outcome', v('audit-outcome'));
-  if (v('audit-from')) p.set('from', new Date(v('audit-from') + 'T00:00:00').getTime());
-  if (v('audit-to')) p.set('to', new Date(v('audit-to') + 'T23:59:59.999').getTime());
-  return p;
-}
-
-async function loadAuditLog(more = false) {
-  const box = document.getElementById('audit-body');
-  const p = auditQuery();
-  p.set('limit', 100);
-  if (more && auditEntries.length) p.set('before', auditEntries[auditEntries.length - 1].id);
-  if (!more) box.innerHTML = '<div class="switch-info-status">Loading…</div>';
-  try {
-    const resp = await api('api/audit.php?' + p);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not load the audit log');
-    auditEntries = more ? auditEntries.concat(data.entries) : data.entries;
-    const sel = document.getElementById('audit-user');
-    const keep = sel.value;
-    sel.innerHTML = '<option value="">Anyone</option><option value="(system)">WebMonitor (automatic)</option>'
-      + data.users.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
-    sel.value = keep;
-    renderAuditLog(data.more);
-  } catch (err) {
-    box.innerHTML = `<div class="switch-info-status details-error">${escapeHtml(err.message)}</div>`;
-  }
-}
-
-function renderAuditLog(more) {
-  const box = document.getElementById('audit-body');
-  document.getElementById('audit-meta').textContent = `${auditEntries.length}${more ? '+' : ''} entr${auditEntries.length === 1 ? 'y' : 'ies'} shown, newest first`;
-  if (!auditEntries.length) { box.innerHTML = '<div class="switch-info-status">Nothing matches.</div>'; return; }
-  box.innerHTML = `<div class="details-table-wrap"><table class="switch-info-table audit-table">
-    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Outcome</th></tr></thead>
-    <tbody>${auditEntries.map(e => `
-      <tr class="audit-${e.outcome}">
-        <td class="nowrap small">${escapeHtml(new Date(e.ts).toLocaleString())}</td>
-        <td class="small">${e.username ? escapeHtml(e.username) : '<span class="muted">WebMonitor</span>'}${e.ip ? `<div class="muted mono">${escapeHtml(e.ip)}</div>` : ''}</td>
-        <td>${escapeHtml(e.summary)}<div class="muted small mono">${escapeHtml(e.action)}${e.target ? ` · ${escapeHtml(e.target)}` : ''}</div>
-          ${e.details ? `<details class="audit-details"><summary class="small">Details</summary><pre>${escapeHtml(JSON.stringify(e.details, null, 2))}</pre></details>` : ''}</td>
-        <td><span class="chg-badge chg-${e.outcome === 'ok' ? 'ok' : e.outcome === 'denied' ? 'warn' : 'bad'}">${escapeHtml(e.outcome)}</span></td>
-      </tr>`).join('')}</tbody></table></div>
-    ${more ? '<button type="button" class="section-btn" id="audit-more">Load older entries</button>' : ''}`;
-  document.getElementById('audit-more')?.addEventListener('click', () => loadAuditLog(true));
-}
-
-document.getElementById('audit-filters').addEventListener('input', () => {
-  clearTimeout(auditTimer);
-  auditTimer = setTimeout(() => loadAuditLog(), 350);
-});
-document.getElementById('audit-filters').addEventListener('submit', e => { e.preventDefault(); loadAuditLog(); });
-document.getElementById('audit-csv').addEventListener('click', () => {
-  location.href = 'api/audit.php?format=csv&' + auditQuery();
-});
-document.getElementById('audit-verify').addEventListener('click', async () => {
-  const meta = document.getElementById('audit-meta');
-  meta.textContent = 'Checking the hash chain…';
-  try {
-    const resp = await api('api/audit.php?verify=1');
-    const r = await resp.json();
-    if (!resp.ok) throw new Error(r.error || 'Check failed');
-    meta.innerHTML = r.ok ? `<span class="ok-text">✓ Intact: all ${r.checked} entries chain correctly.</span>`
-      : `<span class="crit-text">✗ Broken at entry #${r.brokenAt}: ${escapeHtml(r.reason)}.</span>`;
-  } catch (err) {
-    meta.textContent = err.message;
-  }
-});
-WEBMON_FILE_EOF
-
 mkdir -p "$(dirname "$APP_DIR/assets/configbackup.js")"
 cat > "$APP_DIR/assets/configbackup.js" <<'WEBMON_FILE_EOF'
 // Switch/router configuration backups in host Details (admins only).
@@ -9084,509 +8433,6 @@ cat > "$APP_DIR/assets/favicon.svg" <<'WEBMON_FILE_EOF'
 </svg>
 WEBMON_FILE_EOF
 
-mkdir -p "$(dirname "$APP_DIR/assets/flexlm.js")"
-cat > "$APP_DIR/assets/flexlm.js" <<'WEBMON_FILE_EOF'
-// Licences tab: FlexLM licence servers, the licences in use and who has them.
-// Uses api(), escapeHtml(), fmtAgo(), fmtDuration(), cssVar(), IS_ADMIN and
-// showView() from app.js / updates.js, and Chart.js.
-
-const FLM_STATUS_LABEL = { up: 'Up', warn: 'Warning', down: 'Down', pending: 'Pending', unknown: 'Unknown', paused: 'Paused' };
-const FLM_INTERVALS = [[60, '1 minute'], [120, '2 minutes'], [300, '5 minutes'], [600, '10 minutes'], [900, '15 minutes'],
-  [1800, '30 minutes'], [3600, '1 hour']];
-const FLM_COLORS = ['#5b8cff', '#33d17a', '#f0ad4e', '#ef5350', '#a78bfa', '#22d3ee', '#f472b6', '#facc15', '#94a3b8', '#fb923c'];
-
-let flmData = null;          // {lmutil, servers}
-let flmVisible = false;
-let flmTimer = null;
-let flmTab = 'servers';
-let flmSearch = '';
-let flmHistory = null;
-let flmHistoryDays = 7;
-let flmHistoryTimer = null;
-let flmDetailId = null;      // server open in the details window
-let flmUsageDays = 1;
-let flmChart = null;
-
-async function loadFlexlm() {
-  clearTimeout(flmTimer);
-  try {
-    const resp = await api('api/flexlm.php');
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not load the licence servers');
-    setFlexlm(data);
-  } catch (err) {
-    if (flmVisible) document.getElementById('flm-body').innerHTML = `<p class="details-error">${escapeHtml(err.message)}</p>`;
-  }
-  // While a check is waiting for the background job, look again soon.
-  const waiting = flmData && flmData.servers.some(s => s.checkRequested);
-  flmTimer = setTimeout(loadFlexlm, flmVisible ? (waiting ? 5000 : 30000) : 120000);
-}
-
-function setFlexlm(data) {
-  flmData = data;
-  const down = data.servers.filter(s => s.status === 'down').length;
-  const el = document.getElementById('count-flexlm');
-  el.textContent = down ? String(down) : '';
-  el.classList.toggle('crit', down > 0);
-  if (flmVisible) renderFlexlm();
-  if (flmDetailId != null) renderFlexlmDetail(false);
-}
-
-function flexlmViewShown(visible) {
-  flmVisible = visible;
-  if (visible) { if (flmData) renderFlexlm(); loadFlexlm(); }
-}
-
-// ---- Helpers
-
-function flmPill(s) {
-  const cls = { up: 'up', warn: 'pending', down: 'down' }[s.status] || 'muted';
-  return `<span class="status-pill ${cls}">${FLM_STATUS_LABEL[s.status] || escapeHtml(s.status)}</span>`;
-}
-
-function flmMeter(used, total, pctWarn = 100) {
-  if (!total) return '<span class="muted small">uncounted</span>';
-  const pct = Math.min(100, Math.round(used / total * 100));
-  const cls = used >= total ? 'crit' : pct >= Math.min(pctWarn || 100, 85) ? 'warn' : '';
-  return `<div class="flm-meter" title="${used} of ${total} in use (${pct}%)">
-    <div class="flm-meter-label"><span><strong>${used}</strong> / ${total}</span><span class="muted">${pct}%</span></div>
-    <div class="storage-meter"><div class="storage-fill ${cls}" style="width:${pct}%"></div></div></div>`;
-}
-
-function flmDaysUntil(date) {
-  const d = new Date(date + 'T00:00:00');
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return Math.round((d - today) / 86400000);
-}
-
-function flmExpiry(date, warnDays = 30) {
-  if (!date) return '<span class="muted">permanent</span>';
-  const days = flmDaysUntil(date);
-  const cls = days < 0 ? 'down-text' : days <= warnDays ? 'warn-text' : '';
-  const when = days < 0 ? `expired ${-days} d ago` : days === 0 ? 'today' : `in ${days} d`;
-  return `<span class="${cls}" title="${escapeHtml(date)}">${escapeHtml(date)} <span class="muted small">${when}</span></span>`;
-}
-
-function flmSince(ms) {
-  return fmtDuration(Math.max(0, (Date.now() - ms) / 1000));
-}
-
-function flmMatches(...fields) {
-  if (!flmSearch) return true;
-  const hay = fields.filter(Boolean).join(' ').toLowerCase();
-  return flmSearch.split(/\s+/).every(t => hay.includes(t));
-}
-
-function flmAllCheckouts() {
-  return (flmData ? flmData.servers : []).flatMap(s => s.checkouts.map(c => ({ ...c, serverName: s.name })));
-}
-
-// ---- Rendering
-
-function renderFlexlm() {
-  const d = flmData;
-  if (!d) return;
-  const all = d.servers;
-  const count = st => all.filter(s => s.status === st).length;
-  const used = all.reduce((n, s) => n + s.used, 0);
-  const total = all.reduce((n, s) => n + s.total, 0);
-  const users = new Set(flmAllCheckouts().map(c => c.user)).size;
-  const soon = all.filter(s => s.earliestExpiry && flmDaysUntil(s.earliestExpiry) <= (s.expiryWarnDays || 30)).length;
-  const full = all.reduce((n, s) => n + s.features.filter(f => f.total && f.used >= f.total).length, 0);
-  document.getElementById('flm-summary-line').textContent = all.length
-    ? `${all.length} licence server${all.length === 1 ? '' : 's'} · ${all.reduce((n, s) => n + s.features.length, 0)} features`
-    : 'FlexLM licence servers';
-  document.getElementById('flm-count-inuse').textContent = users ? String(users) : '';
-
-  const notice = document.getElementById('flm-notice');
-  notice.innerHTML = d.lmutil.ok ? '' : `<div class="flm-notice details-error">
-      <strong>${escapeHtml(d.lmutil.problem || 'lmutil is not available.')}</strong>
-      ${d.lmutil.path ? '' : `<br>WebMonitor looks for it in ${d.lmutil.searched.map(p => `<code>${escapeHtml(p)}</code>`).join(', ')}.`}
-      <a href="#help=flexlm" data-help-link="flexlm">How to install lmutil</a></div>`;
-
-  const tile = (key, label, value, sub, tone) =>
-    `<button type="button" class="kpi ${tone}" data-flm-tile="${key}"><span class="kpi-label">${label}</span><span class="kpi-value">${value}</span><span class="kpi-sub">${sub}</span></button>`;
-  document.getElementById('flm-tiles').innerHTML = all.length ? [
-    tile('servers', 'Servers', all.length, `${count('up') + count('warn')} answering${count('paused') ? ` · ${count('paused')} paused` : ''}`, ''),
-    tile('servers', 'Down', count('down'), count('down') ? 'needs attention' : 'all answering', count('down') ? 'bad' : 'good'),
-    tile('servers', 'Licences in use', used, total ? `of ${total} (${Math.round(used / total * 100)}%)` : 'none counted', full ? 'warn' : ''),
-    tile('inuse', 'Users now', users, `${flmAllCheckouts().length} checkouts`, ''),
-    tile('servers', 'Warnings', count('warn'), soon ? `${soon} server${soon === 1 ? '' : 's'} with licences expiring` : full ? `${full} feature${full === 1 ? '' : 's'} full` : 'none', count('warn') ? 'warn' : ''),
-  ].join('') : '';
-
-  document.querySelectorAll('#flm-tabs .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.flmTab === flmTab));
-  if (flmTab === 'inuse') return renderFlexlmInUse();
-  if (flmTab === 'history') return renderFlexlmHistory();
-  renderFlexlmServers();
-}
-
-function renderFlexlmServers() {
-  const body = document.getElementById('flm-body');
-  const all = flmData.servers;
-  if (!all.length) {
-    body.innerHTML = `<div class="svc-empty">
-      <h3>No licence servers yet</h3>
-      <p class="muted">Add a FlexLM licence server by its port and address (for example 27000@192.168.1.20) to see whether it's up,
-        how many licences are in use, when they expire and who has them.</p>
-      ${IS_ADMIN ? '<button type="button" class="primary-btn" data-flm-act="add">Add your first licence server</button>' : ''}</div>`;
-    return;
-  }
-  const rank = { down: 0, warn: 1, unknown: 2, pending: 3, up: 4, paused: 5 };
-  const rows = all.filter(s => flmMatches(s.name, s.target, s.message, s.notes, ...s.features.map(f => f.name), ...s.vendors.map(v => v.name),
-    ...s.checkouts.flatMap(c => [c.user, c.host])))
-    .sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || a.name.localeCompare(b.name));
-  if (!rows.length) { body.innerHTML = '<div class="empty">Nothing matches.</div>'; return; }
-  body.innerHTML = `<div class="svc-table-wrap"><table class="svc-table flm-table">
-    <thead><tr><th>Status</th><th>Licence server</th><th class="flm-meter-col">Licences in use</th><th class="num">Users</th>
-      <th>Next expiry</th><th>Checked</th>${IS_ADMIN ? '<th></th>' : ''}</tr></thead>
-    <tbody>${rows.map(s => {
-      const vend = s.vendors.map(v => v.up ? escapeHtml(v.name) : `<span class="down-text">${escapeHtml(v.name)} down</span>`).join(', ');
-      const sub = [escapeHtml(s.target), vend, s.lmgrdVersion ? `lmgrd ${escapeHtml(s.lmgrdVersion)}` : ''].filter(Boolean).join(' · ');
-      const users = new Set(s.checkouts.map(c => c.user)).size;
-      const since = s.status !== 'up' && s.changedAt && s.status !== 'pending' ? ` · since ${fmtAgo(s.changedAt).replace(' ago', '')}` : '';
-      return `<tr class="svc-row st-${s.status}">
-        <td>${flmPill(s)}</td>
-        <td class="svc-name-cell">
-          <div class="svc-name"><a href="#" class="flm-link" data-flm-open="${s.id}">${escapeHtml(s.name)}</a>${s.alert ? '' : ' <span class="muted small" title="Alerts are off for this server">🔕</span>'}</div>
-          <div class="svc-sub"><span class="mono">${sub}</span></div>
-          ${s.message ? `<div class="svc-sub ${s.status === 'down' ? 'down-text' : s.status === 'warn' ? 'warn-text' : ''}">${escapeHtml(s.message)}${since}</div>` : ''}
-        </td>
-        <td class="flm-meter-col">${s.features.length ? flmMeter(s.used, s.total, s.fullPct) : '<span class="muted">—</span>'}</td>
-        <td class="num">${users || '<span class="muted">0</span>'}</td>
-        <td class="nowrap">${s.features.length ? flmExpiry(s.earliestExpiry, s.expiryWarnDays) : '<span class="muted">—</span>'}</td>
-        <td class="nowrap muted small">${s.checkRequested ? 'checking…' : s.lastCheck ? fmtAgo(s.lastCheck) : '—'}</td>
-        ${IS_ADMIN ? `<td class="svc-act-cell"><div class="svc-actions">
-          <button type="button" class="card-btn" data-flm-act="check" data-id="${s.id}"${s.checkRequested || !s.enabled ? ' disabled' : ''}>${s.checkRequested ? 'Checking…' : 'Check now'}</button>
-          <button type="button" class="card-btn" data-flm-act="edit" data-id="${s.id}">Edit</button>
-          <button type="button" class="card-btn danger" data-flm-act="delete" data-id="${s.id}">Delete</button></div></td>` : ''}
-      </tr>`;
-    }).join('')}</tbody></table></div>`;
-}
-
-function flmCheckoutTable(list, withServer = true, ended = false) {
-  return `<div class="svc-table-wrap"><table class="svc-table">
-    <thead><tr><th>User</th><th>Computer</th><th>Feature</th>${withServer ? '<th>Server</th>' : ''}<th class="num">Licences</th>
-      <th>${ended ? 'Started' : 'Since'}</th><th class="num">${ended ? 'Duration' : 'For'}</th></tr></thead>
-    <tbody>${list.map(c => `<tr>
-      <td><strong>${escapeHtml(c.user)}</strong></td>
-      <td>${escapeHtml(c.host)}${c.display && c.display !== c.host ? ` <span class="muted small">${escapeHtml(c.display)}</span>` : ''}</td>
-      <td><span class="mono">${escapeHtml(c.feature)}</span>${c.version ? ` <span class="muted small">v${escapeHtml(c.version)}</span>` : ''}</td>
-      ${withServer ? `<td><a href="#" class="flm-link" data-flm-open="${c.serverId}">${escapeHtml(c.serverName || '')}</a></td>` : ''}
-      <td class="num">${c.licenses}</td>
-      <td class="nowrap small">${escapeHtml(new Date(c.startedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }))}</td>
-      <td class="num small">${ended
-        ? (c.endedAt ? fmtDuration((c.endedAt - c.startedAt) / 1000) : '<span class="ok-text">in use</span>')
-        : flmSince(c.startedAt)}</td>
-    </tr>`).join('')}</tbody></table></div>`;
-}
-
-function renderFlexlmInUse() {
-  const body = document.getElementById('flm-body');
-  const list = flmAllCheckouts().filter(c => flmMatches(c.user, c.host, c.display, c.feature, c.serverName))
-    .sort((a, b) => a.user.localeCompare(b.user) || a.feature.localeCompare(b.feature));
-  if (!flmAllCheckouts().length) {
-    body.innerHTML = '<div class="empty">Nobody has a licence checked out right now.</div>';
-    return;
-  }
-  body.innerHTML = list.length ? flmCheckoutTable(list) : '<div class="empty">Nothing matches.</div>';
-}
-
-async function loadFlexlmHistory() {
-  const q = flmSearch;
-  const days = flmHistoryDays;
-  try {
-    const resp = await api(`api/flexlm.php?history=1&days=${days}&q=${encodeURIComponent(q)}`);
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not load the history');
-    if (q !== flmSearch || days !== flmHistoryDays) return;   // a newer request is on its way
-    flmHistory = data;
-  } catch (err) {
-    flmHistory = { error: err.message };
-  }
-  if (flmVisible && flmTab === 'history') renderFlexlmHistory(false);
-}
-
-function renderFlexlmHistory(load = true) {
-  const body = document.getElementById('flm-body');
-  const range = `<div class="seg flm-range" role="group" aria-label="Range">${[1, 7, 30, 90, 180].map(n =>
-    `<button type="button" class="group-btn${n === flmHistoryDays ? ' active' : ''}" data-flm-hdays="${n}">${n === 1 ? '24 h' : n + ' days'}</button>`).join('')}</div>`;
-  if (load) loadFlexlmHistory();
-  const h = flmHistory;
-  if (!h || h.days !== flmHistoryDays) {
-    if (!h || !h.error) { body.innerHTML = `${range}<div class="switch-info-status">Loading…</div>`; return; }
-  }
-  if (h.error) { body.innerHTML = `${range}<p class="details-error">${escapeHtml(h.error)}</p>`; return; }
-  body.innerHTML = `${range}
-    <div class="flm-history">
-      <div class="panel-box flm-top">
-        <h3>Top users</h3>
-        ${h.topUsers.length ? `<ol class="flm-top-list">${h.topUsers.map(u => `<li>
-          <span class="flm-top-name">${escapeHtml(u.user)}</span>
-          <span class="muted small">${u.hours} h · ${u.sessions} checkout${u.sessions === 1 ? '' : 's'} · ${u.features} feature${u.features === 1 ? '' : 's'}</span></li>`).join('')}</ol>`
-          : '<p class="muted small">No checkouts in this period.</p>'}
-        <p class="hint">Hours run from each checkout's start time to the last check that saw it.</p>
-      </div>
-      <div class="flm-history-list">
-        ${h.checkouts.length ? flmCheckoutTable(h.checkouts, true, true) : '<div class="empty">No checkouts in this period.</div>'}
-        ${h.checkouts.length >= 300 ? '<p class="hint">Showing the latest 300. Search to narrow it down.</p>' : ''}
-      </div>
-    </div>`;
-}
-
-// ---- Details window: features, users and the usage chart
-
-const flmDetailBackdrop = document.getElementById('flm-detail-backdrop');
-
-function openFlexlmDetail(id) {
-  flmDetailId = id;
-  flmDetailBackdrop.classList.remove('hidden');
-  renderFlexlmDetail(true);
-}
-
-function closeFlexlmDetail() {
-  flmDetailBackdrop.classList.add('hidden');
-  flmDetailId = null;
-  if (flmChart) { flmChart.destroy(); flmChart = null; }
-}
-
-function renderFlexlmDetail(full) {
-  const s = flmData && flmData.servers.find(x => x.id === flmDetailId);
-  const el = document.getElementById('flm-detail');
-  if (!s) { closeFlexlmDetail(); return; }
-  const head = `<div class="modal-title-row"><h2 id="flm-detail-title">${escapeHtml(s.name)}</h2>${flmPill(s)}</div>
-    <p class="modal-meta"><span class="mono">${escapeHtml(s.target)}</span>
-      ${s.vendors.length ? ' · vendor daemon' + (s.vendors.length === 1 ? ' ' : 's ') + s.vendors.map(v => `${escapeHtml(v.name)}${v.version ? ' v' + escapeHtml(v.version) : ''}${v.up ? '' : ' <span class="down-text">down</span>'}`).join(', ') : ''}
-      ${s.lmgrdVersion ? ` · lmgrd v${escapeHtml(s.lmgrdVersion)}` : ''}
-      · checked ${s.lastCheck ? fmtAgo(s.lastCheck) : 'never'}${s.lastMs != null ? ` (${s.lastMs} ms)` : ''}</p>
-    ${s.message ? `<p class="${s.status === 'down' ? 'details-error' : 'flm-warn-line'}">${escapeHtml(s.message)}</p>` : ''}
-    ${s.notes ? `<p class="hint">${escapeHtml(s.notes)}</p>` : ''}`;
-  const byFeature = {};
-  s.checkouts.forEach(c => { (byFeature[c.feature] = byFeature[c.feature] || []).push(c); });
-  const features = s.features.length ? `<div class="svc-table-wrap"><table class="svc-table">
-      <thead><tr><th>Feature</th><th>Vendor</th><th class="flm-meter-col">In use</th><th>Expires</th><th>Checked out by</th></tr></thead>
-      <tbody>${s.features.map(f => `<tr>
-        <td><span class="mono">${escapeHtml(f.name)}</span>${f.version ? ` <span class="muted small">v${escapeHtml(f.version)}</span>` : ''}</td>
-        <td class="small">${escapeHtml(f.vendor || '—')}</td>
-        <td class="flm-meter-col">${flmMeter(f.used, f.total, s.fullPct)}${f.reserved ? `<div class="muted small">${f.reserved} reserved</div>` : ''}</td>
-        <td class="nowrap">${flmExpiry(f.expires, s.expiryWarnDays)}</td>
-        <td class="small">${(byFeature[f.name] || []).map(c => `<span class="flm-user" title="since ${escapeHtml(new Date(c.startedAt).toLocaleString())}">${escapeHtml(c.user)}@${escapeHtml(c.host)}${c.licenses > 1 ? ` ×${c.licenses}` : ''}</span>`).join(' ') || '<span class="muted">—</span>'}</td>
-      </tr>`).join('')}</tbody></table></div>`
-    : `<p class="hint">${s.status === 'pending' ? 'Not checked yet: the first check runs within a minute.' : 'No features reported yet.'}</p>`;
-
-  if (!full && el.querySelector('#flm-usage-canvas')) {
-    // Refresh the text parts only; leave the chart alone.
-    el.querySelector('.flm-detail-head').innerHTML = head;
-    el.querySelector('.flm-detail-features').innerHTML = features;
-    return;
-  }
-  el.innerHTML = `<div class="flm-detail-head">${head}</div>
-    <div class="switch-info"><div class="switch-info-header"><h3>Features</h3></div><div class="flm-detail-features">${features}</div></div>
-    <div class="switch-info">
-      <div class="switch-info-header"><h3>Licences in use over time</h3>
-        <div class="seg" role="group" aria-label="Range">${[[1, '24 h'], [7, '7 d'], [30, '30 d'], [90, '90 d'], [365, '1 year']].map(([n, l]) =>
-          `<button type="button" class="group-btn${n === flmUsageDays ? ' active' : ''}" data-flm-udays="${n}">${l}</button>`).join('')}</div></div>
-      <div class="flm-chart-box"><canvas id="flm-usage-canvas"></canvas></div>
-      <p class="muted small" id="flm-usage-note"></p>
-    </div>
-    <details class="switch-info flm-output"><summary>Last lmstat output</summary><pre class="cfg-pre" id="flm-output">Loading…</pre></details>`;
-  el.querySelector('.flm-output').addEventListener('toggle', e => { if (e.target.open) loadFlexlmOutput(s.id); });
-  loadFlexlmUsage(s.id);
-}
-
-async function loadFlexlmOutput(id) {
-  const pre = document.getElementById('flm-output');
-  try {
-    const resp = await api(`api/flexlm.php?id=${id}&output=1`);
-    const d = await resp.json();
-    if (!resp.ok) throw new Error(d.error || 'Could not load the output');
-    pre.textContent = d.output ? `Checked ${new Date(d.checkedAt).toLocaleString()}\n\n${d.output}` : 'No output yet.';
-  } catch (err) {
-    pre.textContent = err.message;
-  }
-}
-
-async function loadFlexlmUsage(id) {
-  const days = flmUsageDays;
-  const note = document.getElementById('flm-usage-note');
-  try {
-    const resp = await api(`api/flexlm.php?usage=${id}&days=${days}`);
-    const d = await resp.json();
-    if (!resp.ok) throw new Error(d.error || 'Could not load the usage');
-    if (flmDetailId !== id || flmUsageDays !== days) return;
-    const c = document.getElementById('flm-usage-canvas');
-    if (!c) return;
-    if (flmChart) flmChart.destroy();
-    // Busiest features first; the chart gets crowded beyond ten.
-    const names = Object.keys(d.features).sort((a, b) => (d.peaks[b] || 0) - (d.peaks[a] || 0)).slice(0, 10);
-    const grid = cssVar('--panel-border');
-    const text = cssVar('--muted');
-    const span = days * 86400;
-    flmChart = new Chart(c, {
-      type: 'line',
-      data: { datasets: names.map((n, i) => ({
-        label: `${n} (of ${d.totals[n]})`, data: d.features[n].map(([x, y]) => ({ x: x / 1000, y })),
-        borderColor: FLM_COLORS[i % FLM_COLORS.length], backgroundColor: FLM_COLORS[i % FLM_COLORS.length],
-        borderWidth: 1.6, pointRadius: d.features[n].length < 3 ? 3 : 0, stepped: true,
-      })) },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
-        interaction: { mode: 'nearest', axis: 'x', intersect: false },
-        scales: {
-          x: { type: 'linear', min: Date.now() / 1000 - span, max: Date.now() / 1000, grid: { color: grid }, ticks: { color: text, maxTicksLimit: 7, callback: v => {
-            const dt = new Date(v * 1000);
-            return span > 2 * 86400 ? dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) : dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          } } },
-          y: { beginAtZero: true, grid: { color: grid }, ticks: { color: text, precision: 0 } },
-        },
-        plugins: {
-          legend: { position: 'bottom', labels: { color: cssVar('--text'), boxWidth: 10, boxHeight: 10 } },
-          tooltip: { callbacks: { title: items => items.length ? new Date(items[0].raw.x * 1000).toLocaleString() : '' } },
-        },
-      },
-    });
-    const more = Object.keys(d.features).length - names.length;
-    note.textContent = !names.length ? 'No usage recorded in this period yet.'
-      : (d.hourly ? 'Highest number in use in each hour.' : 'Licences in use at each check.')
-        + (more > 0 ? ` Showing the 10 busiest features; ${more} more not shown.` : '');
-  } catch (err) {
-    note.textContent = err.message;
-  }
-}
-
-flmDetailBackdrop.addEventListener('click', e => {
-  if (e.target === flmDetailBackdrop) return closeFlexlmDetail();
-  const b = e.target.closest('[data-flm-udays]');
-  if (b) {
-    flmUsageDays = Number(b.dataset.flmUdays);
-    b.parentElement.querySelectorAll('.group-btn').forEach(x => x.classList.toggle('active', x === b));
-    loadFlexlmUsage(flmDetailId);
-  }
-});
-document.getElementById('flm-detail-close').addEventListener('click', closeFlexlmDetail);
-
-// ---- Actions
-
-async function flmAction(act, id) {
-  const s = flmData.servers.find(x => x.id === id);
-  if (act === 'edit') return openFlexlmForm(s);
-  if (act === 'delete') {
-    if (!confirm(`Delete the licence server "${s.name}"?\n\nIts usage and checkout history go with it. This can't be undone.`)) return;
-  }
-  try {
-    const resp = await api(`api/flexlm.php?id=${id}${act === 'check' ? '&action=check' : ''}`, { method: act === 'delete' ? 'DELETE' : 'POST' });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.error || 'Request failed');
-    setFlexlm(data);
-    if (act === 'check') loadFlexlm();   // starts the quick refresh while it waits
-  } catch (err) {
-    alert(err.message);
-  }
-}
-
-document.addEventListener('click', e => {
-  const help = e.target.closest('[data-help-link]');
-  if (help) { e.preventDefault(); showView('help', help.dataset.helpLink); return; }
-  const b = e.target.closest('[data-flm-act]');
-  if (b) {
-    e.preventDefault();
-    if (b.dataset.flmAct === 'add') openFlexlmForm(null);
-    else flmAction(b.dataset.flmAct, Number(b.dataset.id));
-    return;
-  }
-  const o = e.target.closest('[data-flm-open]');
-  if (o) { e.preventDefault(); openFlexlmDetail(Number(o.dataset.flmOpen)); return; }
-  const t = e.target.closest('[data-flm-tile]');
-  if (t) { flmTab = t.dataset.flmTile; renderFlexlm(); return; }
-  const hd = e.target.closest('[data-flm-hdays]');
-  if (hd) { flmHistoryDays = Number(hd.dataset.flmHdays); flmHistory = null; renderFlexlmHistory(); }
-});
-
-document.getElementById('flm-add').addEventListener('click', () => openFlexlmForm(null));
-document.querySelectorAll('#flm-tabs .tab-btn').forEach(b => b.addEventListener('click', () => { flmTab = b.dataset.flmTab; renderFlexlm(); }));
-document.getElementById('flm-search').addEventListener('input', e => {
-  flmSearch = e.target.value.trim().toLowerCase();
-  if (flmTab !== 'history') return renderFlexlm();
-  clearTimeout(flmHistoryTimer);
-  flmHistoryTimer = setTimeout(() => renderFlexlmHistory(), 300);
-});
-
-// ---- Add / edit form
-
-const flmBackdrop = document.getElementById('flm-backdrop');
-const flmForm = document.getElementById('flm-form');
-let flmEditing = null;
-
-function closeFlexlmForm() { flmBackdrop.classList.add('hidden'); flmEditing = null; }
-document.getElementById('flm-close').addEventListener('click', closeFlexlmForm);
-flmBackdrop.addEventListener('click', e => { if (e.target === flmBackdrop) closeFlexlmForm(); });
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  if (!flmBackdrop.classList.contains('hidden')) closeFlexlmForm();
-  else if (!flmDetailBackdrop.classList.contains('hidden')) closeFlexlmDetail();
-});
-
-function openFlexlmForm(s) {
-  flmEditing = s || null;
-  const v = (x, d = '') => escapeHtml(String(x ?? d));
-  document.getElementById('flm-form-title').textContent = s ? `Edit ${s.name}` : 'Add licence server';
-  flmForm.innerHTML = `
-    <label>Server (port@host) <input type="text" name="target" required value="${v(s ? s.target : '')}" placeholder="27000@192.168.1.20" /></label>
-    <p class="hint">The port lmgrd listens on and the server's name or address, as in the licence file's SERVER line. For a three-server
-      triad, enter all three separated by commas.</p>
-    <div class="form-grid">
-      <label>Name <input type="text" name="name" maxlength="120" value="${v(s ? s.name : '')}" placeholder="optional, e.g. MATLAB" /></label>
-      <label>Check every <select name="interval">${FLM_INTERVALS.map(([n, l]) => `<option value="${n}"${(s ? s.interval : 300) === n ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-    </div>
-    <div class="form-row">
-      <label class="check"><input type="checkbox" name="alert"${!s || s.alert ? ' checked' : ''} /> Send alerts for this server</label>
-      ${s ? `<label class="check"><input type="checkbox" name="paused"${s.enabled ? '' : ' checked'} /> Paused</label>` : ''}
-    </div>
-    <div class="form-grid">
-      <label>Alert when down for <span class="num-unit"><input type="number" name="downAfterMin" min="0" max="1440" value="${v(s ? s.downAfterMin : 10)}" /> minutes</span></label>
-      <label>Warn when a feature is <span class="num-unit"><input type="number" name="fullPct" min="0" max="100" value="${v(s ? s.fullPct : 100)}" /> % in use</span></label>
-      <label>Warn before licences expire <span class="num-unit"><input type="number" name="expiryWarnDays" min="0" max="365" value="${v(s ? s.expiryWarnDays : 30)}" /> days</span></label>
-    </div>
-    <p class="hint">100% warns only when every licence of a feature is in use. 0 turns that warning off.</p>
-    <label>Notes <input type="text" name="notes" maxlength="500" value="${v(s ? s.notes : '')}" placeholder="optional, e.g. who to contact about renewals" /></label>
-    <div class="form-row"><button type="submit" class="primary-btn">${s ? 'Save' : 'Add licence server'}</button><span class="form-msg" id="flm-msg"></span></div>`;
-  flmBackdrop.classList.remove('hidden');
-  flmForm.querySelector('[name="target"]').focus();
-}
-
-flmForm.addEventListener('submit', async e => {
-  e.preventDefault();
-  const get = n => flmForm.querySelector(`[name="${n}"]`);
-  const msg = document.getElementById('flm-msg');
-  const body = {
-    target: get('target').value.trim(), name: get('name').value.trim(), interval: Number(get('interval').value),
-    alert: get('alert').checked, downAfterMin: Number(get('downAfterMin').value) || 0, fullPct: Number(get('fullPct').value) || 0,
-    expiryWarnDays: Number(get('expiryWarnDays').value) || 0, notes: get('notes').value.trim(),
-  };
-  if (flmEditing) body.enabled = !get('paused').checked;
-  msg.className = 'form-msg';
-  msg.textContent = 'Saving…';
-  flmForm.querySelector('[type="submit"]').disabled = true;
-  try {
-    const resp = await api(flmEditing ? `api/flexlm.php?id=${flmEditing.id}` : 'api/flexlm.php',
-      { method: flmEditing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data.error || 'Could not save');
-    setFlexlm(data);
-    closeFlexlmForm();
-    loadFlexlm();
-  } catch (err) {
-    msg.className = 'form-msg err';
-    msg.textContent = err.message;
-  } finally {
-    const btn = flmForm.querySelector('[type="submit"]');
-    if (btn) btn.disabled = false;
-  }
-});
-
-if (location.hash === '#flexlm') showView('flexlm');
-loadFlexlm();
-WEBMON_FILE_EOF
-
 mkdir -p "$(dirname "$APP_DIR/assets/help.js")"
 cat > "$APP_DIR/assets/help.js" <<'WEBMON_FILE_EOF'
 // Help tab: shows the guides in docs/ (the same Markdown files that read as the
@@ -9606,10 +8452,11 @@ const HELP_TOPICS = [
   { id: 'alerts-and-services', title: 'Alerts and services', group: 'Use' },
   { id: 'agents-and-updates', title: 'Agents and updates', group: 'Use' },
   { id: 'devices-and-security', title: 'Devices and security', group: 'Use' },
-  { id: 'flexlm', title: 'FlexLM licences', group: 'Use' },
+  { id: 'flexlm', title: 'FlexLM licences (Pro)', group: 'Use' },
+  { id: 'pro', title: 'WebMonitor Pro', group: 'Use' },
   { id: 'troubleshooting', title: 'Troubleshooting', group: 'Help' },
 ];
-const HELP_VERSION = 3;   // bump with docs changes so browsers fetch them again
+const HELP_VERSION = 4;   // bump with docs changes so browsers fetch them again
 const helpCache = {};
 let helpTopic = 'README';
 let helpReady = false;
@@ -10068,6 +8915,7 @@ function renderHostEditor(host) {
           : '<span class="muted small">No groups yet.</span>'}</div></div>
       <label class="check"><input type="checkbox" id="he-bw-exempt" ${host.bwExempt ? 'checked' : ''} />
         Expected high traffic — no bandwidth alerts for this host (e.g. a download or backup server)</label>
+      <div id="he-pro"></div>
       <p class="hint">Set the device type to <strong>NAS</strong> for QNAP storage: WebMonitor then reads its volumes,
         drives, RAID pools, fans and temperatures over SNMP every 5 minutes and alerts on them (no agent needed).</p>
       <div class="form-row">
@@ -10076,6 +8924,7 @@ function renderHostEditor(host) {
         <span class="form-msg" id="he-msg"></span>
       </div>
     </form>`;
+  if (WM_PRO.hostEditor) WM_PRO.hostEditor(host, document.getElementById('he-pro'));   // Pro: remote access settings
   document.getElementById('he-cancel').addEventListener('click', () => box.classList.add('hidden'));
   document.getElementById('host-edit-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -10093,7 +8942,16 @@ function renderHostEditor(host) {
     const bw = document.getElementById('he-bw-exempt').checked;
     if (bw !== !!host.bwExempt) changes.bwExempt = bw;
     const msg = document.getElementById('he-msg');
-    if (!Object.keys(changes).length) { box.classList.add('hidden'); return; }
+    let proSaved = false;
+    if (WM_PRO.hostEditorSave) {
+      try { proSaved = await WM_PRO.hostEditorSave(host); }
+      catch (err) { msg.textContent = err.message; msg.className = 'form-msg err'; return; }
+    }
+    if (!Object.keys(changes).length) {
+      box.classList.add('hidden');
+      if (proSaved) { render(); updateModal(); }
+      return;
+    }
     const resp = await api(`api/host.php?id=${host.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
     });
@@ -11618,7 +10476,7 @@ function showReport(name) {
   if (name === 'topology') loadTopologyReport();
   if (name === 'devices') loadDevicesReport();   // devices.js
   if (name === 'traffic') loadTrafficReport();   // traffic.js
-  if (name === 'audit') loadAuditLog();   // changes.js
+  if (name === 'audit' && typeof loadAuditLog === 'function') loadAuditLog();   // changes.js (Pro)
 }
 document.querySelectorAll('.report-picker [data-report]').forEach(b => b.addEventListener('click', () => showReport(b.dataset.report)));
 
@@ -12224,7 +11082,9 @@ function showSettingsPanel(name) {
   if (name === 'subnets') loadSubnets();
   if (name === 'locations') loadLocations();
   if (name === 'groups') loadGroups();
-  if (name === 'changes') loadChangeSettings();   // changes.js
+  if (name === 'changes' && typeof loadChangeSettings === 'function') loadChangeSettings();   // changes.js (Pro)
+  if (name === 'remote' && typeof loadRemoteSettings === 'function') loadRemoteSettings();     // remote.js (Pro)
+  if (name === 'pro') renderProPanel();
   if (name === 'homeassistant') loadHomeAssistant();
 }
 
@@ -12610,7 +11470,7 @@ function renderAlertSettings(st) {
     ${chk('as-failed', 'Failed services', st.alert_failed_services)}
     ${chk('as-av', 'Antivirus off, out of date, or missing on Windows', st.alert_antivirus)}
     ${chk('as-services', 'Monitored services down, or certificates expiring (Services tab)', st.alert_services)}
-    ${chk('as-flexlm', 'FlexLM licence servers down, licences all in use, or expiring (Licences tab)', st.alert_flexlm)}
+    ${proOn('flexlm') ? chk('as-flexlm', 'FlexLM licence servers down, licences all in use, or expiring (Licences tab)', st.alert_flexlm) : ''}
     ${chk('as-config', 'Switch configuration changes (found by configuration backups)', st.alert_config_changes)}
     ${chk('as-resolved', 'Also notify when a problem is resolved', st.notify_resolved)}
     <div class="form-row"><button type="submit" class="primary-btn">Save</button><span class="form-msg" id="alert-settings-msg"></span></div>`;
@@ -12619,7 +11479,7 @@ function renderAlertSettings(st) {
 alertSettingsForm.addEventListener('submit', async e => {
   e.preventDefault();
   const n = id => +document.getElementById(id).value;
-  const b = id => document.getElementById(id).checked;
+  const b = id => document.getElementById(id)?.checked ?? undefined;   // undefined: not shown, left as it is
   const msg = () => document.getElementById('alert-settings-msg');
   try {
     const data = await jsonApi('api/notifications.php?what=settings', 'PUT', {
@@ -13063,6 +11923,88 @@ document.getElementById('ha-unlink').addEventListener('click', () => {
     haRequest('PUT', 'api/homeassistant.php', { token: '' }, 'Link removed');
   }
 });
+
+// ---- WebMonitor Pro ----
+// Free version: what Pro adds. Installed but locked: the unlock form.
+// Unlocked: switch each Pro feature on or off. Changes reload the page,
+// since Pro features add tabs and sections.
+
+async function renderProPanel() {
+  const box = document.getElementById('pro-status');
+  let st;
+  try { st = await jsonApi('api/pro.php', 'GET'); }
+  catch (err) { box.innerHTML = `<p class="details-error">${escapeHtml(err.message)}</p>`; return; }
+  const list = Object.entries(st.catalog).map(([k, f]) => `
+    <label class="pro-feature ${st.unlocked ? '' : 'locked'}">
+      ${st.unlocked ? `<input type="checkbox" data-pro-feature="${k}" ${st.features[k] ? 'checked' : ''} />` : '<span class="pro-lock" aria-hidden="true">🔒</span>'}
+      <span><strong>${escapeHtml(f.label)}</strong><span class="hint">${escapeHtml(f.desc)}</span></span>
+    </label>`).join('');
+  if (!st.available) {
+    box.innerHTML = `<div class="settings-card pro-card">
+        <h3>WebMonitor Pro</h3>
+        <p class="hint">Pro adds these features to WebMonitor. It isn't installed on this server.</p>
+        <div class="pro-features">${list}</div>
+        <p class="hint">Get WebMonitor Pro from <a href="https://treelinesoftware.ca" target="_blank" rel="noopener">treelinesoftware.ca</a>.</p>
+      </div>`;
+    return;
+  }
+  if (!st.unlocked) {
+    box.innerHTML = `<div class="settings-card pro-card">
+        <h3>Unlock WebMonitor Pro</h3>
+        <p class="hint">Enter the Pro password you received with your purchase.</p>
+        ${st.passwordSet ? `<form id="pro-unlock" class="settings-form inline">
+          <input type="password" id="pro-password" autocomplete="off" placeholder="Pro password" required />
+          <button type="submit" class="primary-btn">Unlock</button>
+          <span class="form-msg" id="pro-msg"></span>
+        </form>` : '<p class="warn-text small">No Pro password has been set on this server yet.</p>'}
+      </div>
+      <div class="settings-card"><h3>Included</h3><div class="pro-features">${list}</div></div>`;
+    document.getElementById('pro-unlock')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = document.getElementById('pro-msg');
+      setMsg(msg, 'Checking…');
+      try {
+        await jsonApi('api/pro.php?action=unlock', 'POST', { password: document.getElementById('pro-password').value });
+        reloadToSettings('pro');
+      } catch (err) {
+        setMsg(msg, err.message, false);
+        document.getElementById('pro-password').select();
+      }
+    });
+    return;
+  }
+  box.innerHTML = `<div class="settings-card pro-card">
+      <h3>Pro is unlocked</h3>
+      <p class="hint">Unlocked${st.unlockedBy ? ` by ${escapeHtml(st.unlockedBy)}` : ''}${st.unlockedAt ? ` on ${escapeHtml(new Date(st.unlockedAt).toLocaleDateString())}` : ''}.
+        Turn off any feature you don't use; its tabs and settings disappear and its data is kept.</p>
+      <div class="pro-features">${list}</div>
+      <div class="form-row">
+        <button type="button" class="primary-btn" id="pro-save">Save</button>
+        <button type="button" class="section-btn" id="pro-lock">Lock Pro</button>
+        <span class="form-msg" id="pro-msg"></span>
+      </div>
+    </div>`;
+  document.getElementById('pro-save').addEventListener('click', async () => {
+    const features = Object.fromEntries([...box.querySelectorAll('[data-pro-feature]')].map(cb => [cb.dataset.proFeature, cb.checked]));
+    try { await jsonApi('api/pro.php', 'PUT', { features }); reloadToSettings('pro'); }
+    catch (err) { setMsg(document.getElementById('pro-msg'), err.message, false); }
+  });
+  document.getElementById('pro-lock').addEventListener('click', async () => {
+    if (!confirm('Lock WebMonitor Pro? Pro tabs and settings disappear until it is unlocked again with the Pro password. Nothing is deleted.')) return;
+    try { await jsonApi('api/pro.php?action=lock', 'POST', {}); reloadToSettings('pro'); }
+    catch (err) { setMsg(document.getElementById('pro-msg'), err.message, false); }
+  });
+}
+
+/** Reloads the page (Pro changes add or remove tabs) and reopens Settings at a panel. */
+function reloadToSettings(panel) {
+  try { sessionStorage.setItem('wm-open-settings', panel); } catch (e) { /* opens on the dashboard instead */ }
+  location.reload();
+}
+try {
+  const reopen = sessionStorage.getItem('wm-open-settings');
+  if (reopen) { sessionStorage.removeItem('wm-open-settings'); openSettings(reopen); }
+} catch (e) { /* no storage */ }
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/assets/style.css")"
@@ -15196,6 +14138,46 @@ header .icon-btn.active { background: var(--accent-soft); border-color: var(--ac
 }
 .settings-card.scan-section { border: 1px solid var(--panel-border); padding: 16px 18px; background: var(--panel); }
 .settings-card.add-host { margin: 0; }
+
+/* ---- Settings -> WebMonitor Pro ---- */
+.pro-features { display: flex; flex-direction: column; gap: 8px; }
+.pro-feature {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px;
+  border: 1px solid var(--panel-border); border-radius: 10px; cursor: pointer;
+}
+.pro-feature.locked { cursor: default; }
+.pro-feature input { margin-top: 3px; accent-color: var(--accent); }
+.pro-feature > span:last-child { display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; }
+.pro-lock { font-size: 0.85rem; opacity: 0.7; }
+.pro-card h3::after {
+  content: 'PRO'; margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; letter-spacing: 0.05em;
+  vertical-align: 2px; color: #fff; background: var(--accent);
+}
+.settings-nav-label:has(+ [data-panel="pro"])::after { content: ' ✦'; color: var(--accent); }
+
+/* ---- Remote access (WebMonitor Pro) ---- */
+.remote-menu {
+  position: absolute; z-index: 30; min-width: 240px; max-width: 340px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35));
+}
+.remote-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; color: var(--text); text-decoration: none; }
+.remote-item:hover, .remote-item:focus-visible { background: var(--accent-soft); outline: none; }
+.remote-item > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.remote-item .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote-ico { width: 20px; text-align: center; }
+.remote-copy { margin: -2px 0 4px 40px; background: none; border: none; color: var(--accent); font: inherit; font-size: 0.78rem; cursor: pointer; padding: 0; }
+.remote-foot { border-top: 1px solid var(--panel-border); margin-top: 4px; padding: 6px 10px 2px; }
+.rm-apps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.rm-app-row { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.4fr); gap: 8px; align-items: end; }
+@media (max-width: 600px) { .rm-app-row { grid-template-columns: 1fr; } }
+.remote-edit { display: flex; flex-direction: column; gap: 6px; }
+.remote-edit-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) 90px minmax(120px, 1fr); gap: 8px; align-items: center; }
+.remote-edit-row .re-url { grid-column: 2 / -1; }
+.remote-edit-row input[type=number], .remote-edit-row input[type=text], .remote-edit-row input[type=url] {
+  background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 6px 8px; border-radius: 7px; font: inherit; font-size: 0.85rem; min-width: 0;
+}
+@media (max-width: 600px) { .remote-edit-row { grid-template-columns: 1fr 80px; } .remote-edit-row .re-user, .remote-edit-row .re-url { grid-column: 1 / -1; } }
+.settings-form label.pro-feature { flex-direction: row; align-items: flex-start; color: var(--text); font-size: inherit; }
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/assets/topology.js")"
@@ -15707,9 +14689,9 @@ function showView(name, subnet = '') {
   document.getElementById('services-view').classList.toggle('hidden', !services);
   document.getElementById('reports-view').classList.toggle('hidden', !reports);
   document.getElementById('scans-view').classList.toggle('hidden', !scans);
-  document.getElementById('security-view').classList.toggle('hidden', !security);
+  document.getElementById('security-view')?.classList.toggle('hidden', !security);   // Pro
   document.getElementById('network-view').classList.toggle('hidden', !network);
-  document.getElementById('flexlm-view').classList.toggle('hidden', !flexlm);
+  document.getElementById('flexlm-view')?.classList.toggle('hidden', !flexlm);       // Pro
   document.getElementById('help-view').classList.toggle('hidden', !help);
   document.getElementById('help-btn')?.classList.toggle('active', help);
   if (!other) {
@@ -15727,9 +14709,9 @@ function showView(name, subnet = '') {
     renderUpdates();
     loadJobs();
     loadSchedules();
-    loadChanges();   // changes.js
+    if (typeof loadChanges === 'function') loadChanges();   // changes.js (Pro)
     let tick = 0;
-    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) { loadSchedules(); loadChanges(); } }, 10000);
+    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) { loadSchedules(); if (typeof loadChanges === 'function') loadChanges(); } }, 10000);
   }
   if (scans && typeof loadScanQueue === 'function') loadScanQueue();
   if (typeof securityViewShown === 'function') securityViewShown(security);   // vulns.js
@@ -15876,7 +14858,7 @@ async function startJobs(hostIds, type, params = {}) {
     }
     selectedHosts.clear();
     loadJobs();
-    loadChanges();   // changes.js
+    if (typeof loadChanges === 'function') loadChanges();   // changes.js (Pro)
     return data;
   } catch (err) {
     alert(err.message);
@@ -16222,7 +15204,7 @@ function renderScheduleForm(s = null) {
       ${WEEKDAYS.map((d, i) => `<label><input type="checkbox" class="sf-day" value="${1 << i}" ${days & (1 << i) ? 'checked' : ''} /> ${d}</label>`).join('')}
     </div></div>
     <div><div class="field-label">Hosts</div><div class="choice-group">
-      ${[['hosts', 'Pick hosts'], ['groups', 'Groups'], ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
+      ${[['hosts', 'Pick hosts'], ...(proOn('group_schedules') || targets === 'groups' ? [['groups', proOn('group_schedules') ? 'Groups' : 'Groups (Pro)']] : []), ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
         `<label><input type="radio" name="sf-targets" value="${v}" ${v === targets ? 'checked' : ''} /> ${l}</label>`).join('')}
     </div></div>
     <div id="sf-hosts" class="sf-hosts">${hosts.map(h => `
@@ -16328,202 +15310,6 @@ scheduleForm.addEventListener('submit', async e => {
 
 loadSchedules();
 if (location.hash === '#updates') showView('updates');
-WEBMON_FILE_EOF
-
-mkdir -p "$(dirname "$APP_DIR/assets/vulns.js")"
-cat > "$APP_DIR/assets/vulns.js" <<'WEBMON_FILE_EOF'
-// Security tab: vulnerability scans and the report (api/vulns.php).
-// Uses api(), escapeHtml(), fmtAgo(), IS_ADMIN and hostsById from app.js.
-
-const SEV = ['critical', 'high', 'medium', 'low', 'info'];
-const SEV_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
-let secData = null;
-let secVisible = false;
-let secTimer = null;
-const secFilter = { severity: '', ip: '', text: '' };
-
-async function loadSecurity() {
-  clearTimeout(secTimer);
-  try {
-    const resp = await api('api/vulns.php');
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not load the vulnerability report');
-    secData = data;
-    updateSecurityCount();
-    if (typeof render === 'function' && !document.getElementById('hosts-view').classList.contains('hidden')) render();   // app.js: summary tiles
-    if (secVisible) renderSecurity();
-  } catch (err) {
-    if (secVisible) document.getElementById('sec-body').innerHTML = `<p class="details-error">${escapeHtml(err.message)}</p>`;
-  }
-  // Follow a running scan; otherwise refresh now and then.
-  const busy = secData && secData.scans.some(s => s.status === 'queued' || s.status === 'running');
-  secTimer = setTimeout(loadSecurity, busy && secVisible ? 10000 : 300000);
-}
-
-function updateSecurityCount() {
-  const el = document.getElementById('count-security');
-  const n = secData ? secData.summary.critical + secData.summary.high : 0;
-  el.textContent = n ? String(n) : '';
-  el.classList.toggle('crit', !!(secData && secData.summary.critical));
-}
-
-function securityViewShown(visible) {
-  secVisible = visible;
-  if (visible) { if (secData) renderSecurity(); loadSecurity(); }
-}
-
-function scopeLabel(scope) {
-  if (scope === 'all') return 'All devices';
-  if (scope.startsWith('subnet:')) {
-    const s = scope.slice(7);
-    return secData && secData.subnets[s] ? `${secData.subnets[s]} · ${s}` : s;
-  }
-  const h = typeof hostsById !== 'undefined' ? hostsById.get(Number(scope.slice(5))) : null;
-  return h ? h.name : scope;
-}
-
-function renderScopeSelect() {
-  const sel = document.getElementById('sec-scope');
-  const n = typeof hostsById !== 'undefined' ? hostsById.size : 0;
-  if (sel.options.length && sel.dataset.hosts === String(n)) return;   // keeps the person's choice
-  const keep = sel.value;
-  sel.dataset.hosts = String(n);
-  const subnets = Object.entries(secData.subnets || {}).map(([s, n]) => `<option value="subnet:${escapeHtml(s)}">${escapeHtml(n)} · ${escapeHtml(s)}</option>`);
-  const hosts = typeof hostsById !== 'undefined' ? [...hostsById.values()].filter(h => h.ip).sort((a, b) => a.name.localeCompare(b.name)) : [];
-  sel.innerHTML = '<option value="all">All devices</option>'
-    + (subnets.length ? `<optgroup label="Subnet">${subnets.join('')}</optgroup>` : '')
-    + (hosts.length ? `<optgroup label="One device">${hosts.map(h => `<option value="host:${h.id}">${escapeHtml(h.name)}${h.name !== h.ip ? ` · ${escapeHtml(h.ip)}` : ''}</option>`).join('')}</optgroup>` : '');
-  if (keep && [...sel.options].some(o => o.value === keep)) sel.value = keep;
-}
-
-function renderSecurity() {
-  if (!secData) return;
-  renderScopeSelect();
-  const d = secData;
-  const last = d.scans.find(s => s.status === 'done');
-  document.getElementById('sec-summary-line').textContent = d.hosts.length
-    ? `${d.hosts.length} devices scanned${last ? ` · last complete scan ${fmtAgo(last.finishedAt)} (${scopeLabel(last.scope)})` : ''} · report ${new Date(d.generatedAt).toLocaleString()}`
-    : 'No scans yet.';
-
-  // Running / queued scan.
-  const active = d.scans.filter(s => s.status === 'queued' || s.status === 'running');
-  const failed = d.scans[0] && d.scans[0].status === 'failed' ? d.scans[0] : null;
-  document.getElementById('sec-progress').innerHTML = (!d.nmap ? '<p class="details-error">nmap is not installed on the server, so scans can\'t run. Run the upgrade script (it installs nmap) or <code>dnf install nmap</code>.</p>' : '')
-    + active.map(s => {
-      const pct = s.total ? Math.round(100 * s.done / s.total) : 0;
-      return `<div class="sec-run"><strong>${s.status === 'queued' ? 'Waiting to start' : `Scanning ${s.done} of ${s.total}`}</strong> · ${escapeHtml(scopeLabel(s.scope))}
-        ${s.current ? `<span class="muted small">· now: ${escapeHtml(s.current)}</span>` : ''}
-        ${IS_ADMIN ? `<button type="button" class="section-btn" data-sec-cancel="${s.id}">Cancel</button>` : ''}
-        <div class="sec-bar"><span style="width:${pct}%"></span></div></div>`;
-    }).join('')
-    + (failed && !active.length ? `<p class="details-error">The last scan failed: ${escapeHtml(failed.error || 'unknown error')}</p>` : '');
-  document.querySelectorAll('[data-sec-cancel]').forEach(b => b.addEventListener('click', () => cancelSecurityScan(Number(b.dataset.secCancel))));
-
-  document.getElementById('sec-tiles').innerHTML = SEV.map(s => `<button type="button" class="sec-tile ${s} ${secFilter.severity === s ? 'active' : ''}" data-sev="${s}">
-      <span class="n">${d.summary[s]}</span><span class="l">${SEV_LABEL[s]}</span></button>`).join('');
-  document.querySelectorAll('#sec-tiles [data-sev]').forEach(b => b.addEventListener('click', () => {
-    secFilter.severity = secFilter.severity === b.dataset.sev ? '' : b.dataset.sev;
-    renderSecurity();
-  }));
-
-  if (!d.hosts.length) {
-    document.getElementById('sec-body').innerHTML = `<p class="muted">Nothing scanned yet.${IS_ADMIN ? ' Pick what to scan and click <strong>Start scan</strong>.' : ''}</p>`;
-    return;
-  }
-  const hostName = h => h.name ? `${escapeHtml(h.name)} <span class="muted small">${escapeHtml(h.ip)}</span>` : escapeHtml(h.ip);
-  const chips = c => SEV.map(s => c[s] ? `<span class="sev-chip ${s}" title="${SEV_LABEL[s]}">${c[s]}</span>` : '').join('');
-  const hostsHtml = `<h3>Devices <span class="muted small">most at risk first · click one to see only its findings</span></h3>
-    <div class="details-table-wrap"><table class="switch-info-table sec-hosts">
-      <thead><tr><th>Device</th><th>Findings</th><th>Open ports</th><th>Scanned</th></tr></thead>
-      <tbody>${d.hosts.map(h => `<tr class="${secFilter.ip === h.ip ? 'active' : ''}" data-sec-ip="${escapeHtml(h.ip)}">
-        <td>${hostName(h)}${h.error ? ` <span class="badge warn" title="${escapeHtml(h.error)}">partial</span>` : ''}</td>
-        <td>${chips(h.counts) || '<span class="muted small">none</span>'}</td>
-        <td class="small">${h.openPorts.length ? escapeHtml(h.openPorts.slice(0, 12).join(', ')) + (h.openPorts.length > 12 ? ' …' : '') : '—'}</td>
-        <td class="small">${escapeHtml(fmtAgo(h.scannedAt))}</td></tr>`).join('')}</tbody></table></div>`;
-
-  const byIp = new Map(d.hosts.map(h => [h.ip, h]));
-  const text = secFilter.text.toLowerCase();
-  const list = d.findings.filter(f => (!secFilter.severity || f.severity === secFilter.severity) && (!secFilter.ip || f.ip === secFilter.ip)
-    && (!text || [f.title, f.ip, f.service, byIp.get(f.ip)?.name, ...(f.refs || [])].join(' ').toLowerCase().includes(text)))
-    .sort((a, b) => SEV.indexOf(a.severity) - SEV.indexOf(b.severity) || (b.cvss ?? 0) - (a.cvss ?? 0));
-  const refLink = r => /^CVE-\d{4}-\d+$/.test(r) ? `<a href="https://nvd.nist.gov/vuln/detail/${r}" target="_blank" rel="noopener">${r}</a>` : escapeHtml(r);
-  const filters = [secFilter.severity && SEV_LABEL[secFilter.severity], secFilter.ip && (byIp.get(secFilter.ip)?.name || secFilter.ip)].filter(Boolean);
-  const findingsHtml = `<h3>Findings <span class="muted small">${list.length}${filters.length ? ` · ${escapeHtml(filters.join(' · '))} <button type="button" class="link-btn no-print" id="sec-clear">show all</button>` : ''}</span></h3>
-    <input type="search" id="sec-text" class="topo-filter no-print" placeholder="Filter by title, device, service or CVE…" value="${escapeHtml(secFilter.text)}" />
-    <div class="sec-findings">${list.map(f => {
-      const h = byIp.get(f.ip);
-      return `<details class="sec-finding ${f.severity}">
-        <summary><span class="sev-badge ${f.severity}">${SEV_LABEL[f.severity]}${f.cvss != null && f.severity !== 'info' ? ` ${Number(f.cvss).toFixed(1)}` : ''}</span>
-          <span class="sec-title">${escapeHtml(f.title)}</span>
-          <span class="muted small">${h ? hostName(h) : escapeHtml(f.ip)}${f.port ? ` · port ${f.port}` : ''}${f.service ? ` · ${escapeHtml(f.service)}` : ''}</span></summary>
-        <div class="sec-detail">
-          ${f.detail ? `<p class="pre">${escapeHtml(f.detail)}</p>` : ''}
-          ${f.solution ? `<p><strong>Fix:</strong> ${escapeHtml(f.solution)}</p>` : ''}
-          ${f.refs && f.refs.length ? `<p class="small"><strong>References:</strong> ${f.refs.map(refLink).join(', ')}</p>` : ''}
-          ${f.confidence !== 'high' ? '<p class="muted small">Version-based: matched by the version the service reports; the vendor may have fixed it without changing the version.</p>' : ''}
-        </div></details>`;
-    }).join('') || '<p class="muted">No findings match.</p>'}</div>`;
-
-  const scansHtml = `<details class="no-print"><summary><h3 class="inline">Recent scans</h3></summary>
-    <div class="details-table-wrap"><table class="switch-info-table"><thead><tr><th>Scope</th><th>Status</th><th>Devices</th><th>Started</th><th>Finished</th></tr></thead>
-    <tbody>${d.scans.map(s => `<tr><td>${escapeHtml(scopeLabel(s.scope))}</td><td>${escapeHtml(s.status)}${s.error ? ` <span class="muted small">${escapeHtml(s.error)}</span>` : ''}</td>
-      <td>${s.done}/${s.total}</td><td class="small">${s.startedAt ? escapeHtml(new Date(s.startedAt).toLocaleString()) : '—'}</td>
-      <td class="small">${s.finishedAt ? escapeHtml(new Date(s.finishedAt).toLocaleString()) : '—'}</td></tr>`).join('')}</tbody></table></div></details>`;
-
-  const openDetails = [...document.querySelectorAll('#sec-body details.sec-finding[open]')].map(x => x.querySelector('.sec-title')?.textContent);
-  document.getElementById('sec-body').innerHTML = hostsHtml + findingsHtml + scansHtml;
-  document.querySelectorAll('#sec-body details.sec-finding').forEach(x => { if (openDetails.includes(x.querySelector('.sec-title')?.textContent)) x.open = true; });
-  document.querySelectorAll('[data-sec-ip]').forEach(tr => tr.addEventListener('click', () => {
-    secFilter.ip = secFilter.ip === tr.dataset.secIp ? '' : tr.dataset.secIp;
-    renderSecurity();
-  }));
-  document.getElementById('sec-clear')?.addEventListener('click', () => { secFilter.severity = ''; secFilter.ip = ''; renderSecurity(); });
-  const input = document.getElementById('sec-text');
-  input.addEventListener('input', () => {
-    secFilter.text = input.value;
-    const pos = input.selectionStart;
-    renderSecurity();
-    const again = document.getElementById('sec-text');
-    again.focus();
-    again.setSelectionRange(pos, pos);
-  });
-}
-
-async function startSecurityScan() {
-  const scope = document.getElementById('sec-scope').value || 'all';
-  const btn = document.getElementById('sec-start');
-  btn.disabled = true;
-  try {
-    const resp = await api('api/vulns.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope }) });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not start the scan');
-    secData = data;
-    renderSecurity();
-    loadSecurity();
-  } catch (err) {
-    alert(err.message);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function cancelSecurityScan(id) {
-  if (!confirm('Cancel this scan? Devices already scanned keep their results.')) return;
-  const resp = await api(`api/vulns.php?cancel=${id}`, { method: 'POST' });
-  if (resp.ok) { secData = await resp.json(); renderSecurity(); }
-}
-
-document.getElementById('sec-start').addEventListener('click', startSecurityScan);
-document.getElementById('sec-print').addEventListener('click', () => {
-  const closed = [...document.querySelectorAll('#sec-body details.sec-finding:not([open])')];
-  closed.forEach(x => { x.open = true; });
-  document.body.classList.add('print-security');
-  window.print();
-  document.body.classList.remove('print-security');
-  closed.forEach(x => { x.open = false; });
-});
-if (location.hash === '#security') showView('security');
-loadSecurity();
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/assets/wireless.js")"
@@ -16798,7 +15584,7 @@ require_once __DIR__ . '/../includes/flows.php';
 require_once __DIR__ . '/../includes/devicescan.php';
 require_once __DIR__ . '/../includes/services.php';
 require_once __DIR__ . '/../includes/netlive.php';
-require_once __DIR__ . '/../includes/flexlm.php';
+require_once __DIR__ . '/../includes/pro.php';   // licence servers (WebMonitor Pro) or stand-ins
 
 if (PHP_SAPI !== 'cli') exit(1);
 
@@ -17281,13 +16067,13 @@ WEBMON_FILE_EOF
 mkdir -p "$(dirname "$APP_DIR/cli/vulnscan.php")"
 cat > "$APP_DIR/cli/vulnscan.php" <<'WEBMON_FILE_EOF'
 <?php
-// Vulnerability scan worker (Security tab). Run every minute by the
-// webmonitor-vuln timer; runs queued scans, then exits. Only one at a time.
+// Vulnerability scan worker (WebMonitor Pro: pro/cli/vulnscan.php). Run every
+// minute by the webmonitor-vuln timer; does nothing when Pro or the feature is off.
 //   php cli/vulnscan.php
-require_once __DIR__ . '/../includes/vulnscan.php';
+require_once __DIR__ . '/../includes/pro.php';
 
 if (PHP_SAPI !== 'cli') exit(1);
-run_vuln_scans();
+if (pro_feature('vulns')) require PRO_DIR . '/cli/vulnscan.php';
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/docs/README.md")"
@@ -17314,7 +16100,8 @@ updates through a small agent. Everything runs on your own server.
 - [Alerts and services](alerts-and-services.md): notifications and service checks
 - [Agents and updates](agents-and-updates.md): the agent, installing updates, update windows
 - [Devices and security](devices-and-security.md): device inventory, scans, Home Assistant, vulnerability scans
-- [FlexLM licences](flexlm.md): licence servers, licences in use, who has them, expiry alerts
+- [FlexLM licences](flexlm.md) (Pro): licence servers, licences in use, who has them, expiry alerts
+- [WebMonitor Pro](pro.md): what Pro adds, unlocking it, remote access
 - [Troubleshooting](troubleshooting.md)
 WEBMON_FILE_EOF
 
@@ -17380,6 +16167,8 @@ out. Removing a group takes it off its schedules, and a schedule left with no
 groups is turned off.
 
 ## Change management and audit log
+
+Part of [WebMonitor Pro](pro.md).
 
 Every update window, and every manual update, reboot, agent upgrade or
 service restart, gets a **change record** (CHG-000123) under
@@ -17537,6 +16326,8 @@ device in its card's **Edit**; it shows on the card.
 
 ## Vulnerability scans
 
+Part of [WebMonitor Pro](pro.md).
+
 The **Security** tab scans your devices and lists what it finds by severity
 (CVSS: Critical, High, Medium, Low, Info). **Start scan** scans everything, one
 subnet or one host. Scans run in the background; the page updates as they go.
@@ -17563,6 +16354,8 @@ WEBMON_FILE_EOF
 mkdir -p "$(dirname "$APP_DIR/docs/flexlm.md")"
 cat > "$APP_DIR/docs/flexlm.md" <<'WEBMON_FILE_EOF'
 # FlexLM licences
+
+Part of [WebMonitor Pro](pro.md).
 
 The **Licences** tab watches FlexLM (FlexNet Publisher) licence servers: the
 `lmgrd` licence servers that hand out licences for engineering and design
@@ -18407,6 +17200,61 @@ Background history is one read per switch per minute. Neither is noticeable on
 a switch.
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/docs/pro.md")"
+cat > "$APP_DIR/docs/pro.md" <<'WEBMON_FILE_EOF'
+# WebMonitor Pro
+
+WebMonitor is free and open source. **WebMonitor Pro** is an add-on with
+features aimed at businesses. Without it, those features don't appear and
+everything else works the same.
+
+| Feature | What it adds |
+|---|---|
+| Change management and audit log | A change record for every update window and manual update, reboot, agent upgrade or service restart; change emails; optional approval; a tamper-evident audit log of everything changed in WebMonitor ([details](agents-and-updates.md#change-management-and-audit-log)) |
+| Remote access | Remote buttons on host cards: Remote Desktop, SSH, VNC and the device's web page |
+| Vulnerability scanning | The Security tab: scheduled nmap / CVE scans and a security report ([details](devices-and-security.md)) |
+| Licence-server monitoring | The Licences tab: FlexLM servers, licences in use, expiry and alerts ([details](flexlm.md)) |
+| Update schedules by group | Update windows that target card groups |
+
+## Unlock it
+
+Pro is installed with the Pro edition of the install or upgrade script.
+Then, as an admin, open **Settings → WebMonitor Pro** and enter the Pro
+password you received. The same page switches each Pro feature on or off;
+switching one off hides its tabs and settings and keeps its data. **Lock Pro**
+hides them all again until the password is entered.
+
+Get WebMonitor Pro from [treelinesoftware.ca](https://treelinesoftware.ca).
+
+## Remote access
+
+Turn it on under **Settings → WebMonitor Pro**, then set it up in
+**Settings → Remote access**:
+
+- **Methods**: which kinds of remote button exist at all.
+- **Who can use it**: admins only, or everyone who can sign in.
+- **Default user names** for Remote Desktop and SSH (passwords are never
+  stored).
+
+Each host card then has a **Remote** button with the methods that suit it:
+
+| Method | Shown for | What happens |
+|---|---|---|
+| Remote Desktop | Windows, Linux | Downloads a `.rdp` file; open it with Remote Desktop (Windows) or Windows App (macOS). Linux hosts need xrdp running |
+| SSH | Linux, macOS, routers, switches, NAS | Opens `ssh://` in your terminal app; **Copy command** gives the `ssh` command |
+| VNC / Screen Sharing | macOS | Opens `vnc://` (macOS Screen Sharing or a VNC viewer) |
+| Web page | Routers, switches, access points, printers, cameras, NAS, UPS, IoT | Opens `https://<address>/` in a new tab |
+
+A host's agent decides whether it's Windows or Linux; otherwise its OS in
+**Edit** does. In a host's **Edit**, **Remote access** turns methods on or off
+for that host and sets its own port, user name or web address.
+
+Connections go straight from your computer to the device, so your computer
+needs to reach it (same network or VPN) and have the app. Nothing passes
+through the WebMonitor server. Each launch is written to the audit log when
+change management is on.
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/docs/requirements.md")"
 cat > "$APP_DIR/docs/requirements.md" <<'WEBMON_FILE_EOF'
 # System requirements
@@ -18939,7 +17787,7 @@ require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/hostdetails.php';   // NAS checks (nas.php)
 require_once __DIR__ . '/services.php';
 require_once __DIR__ . '/speedtest.php';
-require_once __DIR__ . '/flexlm.php';
+require_once __DIR__ . '/pro.php';   // licence servers (WebMonitor Pro) or stand-ins
 
 /**
  * Alert evaluation, run every minute by cli/cron.php.
@@ -19465,161 +18313,11 @@ function bandwidth_problems(array $s, callable $add, array &$frozenHosts): void 
 }
 WEBMON_FILE_EOF
 
-mkdir -p "$(dirname "$APP_DIR/includes/audit.php")"
-cat > "$APP_DIR/includes/audit.php" <<'WEBMON_FILE_EOF'
-<?php
-require_once __DIR__ . '/db.php';
-
-/**
- * Audit log: an append-only record of who did what, for audit and
- * traceability. Each row's hash covers its content and the previous row's
- * hash (a hash chain), so a row edited or deleted in the database shows up
- * as a break when the chain is verified (audit_verify()).
- *
- * Two kinds of entries:
- *  - specific events written where they happen (sign-ins, change records,
- *    schedule runs, approvals), with a readable summary;
- *  - every dashboard request that changes something (any API call other
- *    than GET), written automatically by require_api_auth() when the request
- *    ends, with the endpoint, the outcome and the request body (secrets
- *    redacted).
- */
-
-const AUDIT_GENESIS = '0000000000000000000000000000000000000000000000000000000000000000';
-const AUDIT_REDACT = '/pass|token|secret|community|private|apikey|api_key/i';
-// Requests that change nothing worth recording.
-const AUDIT_SKIP_ENDPOINTS = ['ping.php', 'logout.php', 'agent.php'];
-
-/** Who is acting in this request (set by require_api_auth / sign-in); null = WebMonitor itself. */
-function audit_actor(?array $user = null, bool $set = false): ?array {
-    static $actor = null;
-    if ($set) $actor = $user;
-    return $actor;
-}
-
-/**
- * Writes one entry. $action is a dotted name ('change.approved',
- * 'auth.login_failed', 'api.write' ...). $details is stored as JSON.
- * Never throws: auditing must not break the action being audited, but a
- * failure is written to the PHP error log.
- */
-function audit_log(string $action, string $summary, ?string $target = null, ?array $details = null,
-                   string $outcome = 'ok', ?array $actor = null, bool $system = false): void {
-    $actor = $system ? null : ($actor ?? audit_actor());
-    $pdo = db();
-    $locked = false;
-    try {
-        // One writer at a time, so each row chains onto the true previous row.
-        $locked = (int) $pdo->query("SELECT GET_LOCK('webmonitor_audit', 10)")->fetchColumn() === 1;
-        $prev = $pdo->query('SELECT hash FROM audit_log ORDER BY id DESC LIMIT 1')->fetchColumn() ?: AUDIT_GENESIS;
-        $row = [
-            'ts' => (int) round(microtime(true) * 1000),
-            'user_id' => $actor ? (int) $actor['id'] : null,
-            'username' => $actor ? (string) $actor['username'] : null,
-            'ip' => $actor !== null && PHP_SAPI !== 'cli' ? substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45) : null,
-            'action' => substr($action, 0, 40),
-            'target' => $target !== null ? mb_substr($target, 0, 120) : null,
-            'summary' => mb_substr($summary, 0, 500),
-            'details' => $details !== null ? mb_substr(json_encode($details, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 0, 60000) : null,
-            'outcome' => in_array($outcome, ['ok', 'denied', 'failed'], true) ? $outcome : 'ok',
-        ];
-        $hash = audit_hash($prev, $row);
-        $pdo->prepare('INSERT INTO audit_log (ts, user_id, username, ip, action, target, summary, details, outcome, prev_hash, hash)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            ->execute([$row['ts'], $row['user_id'], $row['username'], $row['ip'], $row['action'], $row['target'],
-                       $row['summary'], $row['details'], $row['outcome'], $prev, $hash]);
-    } catch (Throwable $e) {
-        error_log('webmonitor audit: could not write "' . $action . '": ' . $e->getMessage());
-    } finally {
-        if ($locked) $pdo->query("SELECT RELEASE_LOCK('webmonitor_audit')");
-    }
-}
-
-function audit_hash(string $prev, array $r): string {
-    return hash('sha256', implode("\x1f", [$prev, $r['ts'], $r['user_id'] ?? '', $r['username'] ?? '', $r['ip'] ?? '',
-        $r['action'], $r['target'] ?? '', $r['summary'], $r['details'] ?? '', $r['outcome']]));
-}
-
-/**
- * Re-computes the chain. Returns ['ok' => bool, 'checked' => n, 'brokenAt' => id|null, 'reason' => ...].
- */
-function audit_verify(): array {
-    $prev = AUDIT_GENESIS;
-    $n = 0;
-    $stmt = db()->query('SELECT * FROM audit_log ORDER BY id');
-    while ($r = $stmt->fetch()) {
-        $n++;
-        if ($r['prev_hash'] !== $prev) {
-            return ['ok' => false, 'checked' => $n, 'brokenAt' => (int) $r['id'], 'reason' => 'a row before this one was removed or changed'];
-        }
-        if (!hash_equals($r['hash'], audit_hash($prev, $r))) {
-            return ['ok' => false, 'checked' => $n, 'brokenAt' => (int) $r['id'], 'reason' => 'this row was changed after it was written'];
-        }
-        $prev = $r['hash'];
-    }
-    return ['ok' => true, 'checked' => $n, 'brokenAt' => null, 'reason' => null];
-}
-
-/** Copy of $v with secret-looking fields replaced. */
-function audit_redact($v) {
-    if (!is_array($v)) return $v;
-    $out = [];
-    foreach ($v as $k => $x) {
-        $out[$k] = is_string($k) && preg_match(AUDIT_REDACT, $k) ? '[redacted]' : audit_redact($x);
-    }
-    return $out;
-}
-
-const AUDIT_AREAS = [
-    'schedules.php' => 'update schedule', 'jobs.php' => 'update jobs', 'changes.php' => 'change record',
-    'host.php' => 'host', 'hosts.php' => 'host', 'host-agent.php' => 'host agent', 'users.php' => 'user',
-    'account.php' => 'own account', 'notifications.php' => 'notifications', 'groups.php' => 'groups / screens',
-    'locations.php' => 'locations', 'subnets.php' => 'subnets', 'homeassistant.php' => 'Home Assistant',
-    'services.php' => 'services', 'scan.php' => 'scan', 'scan-queue.php' => 'scan queue', 'vulns.php' => 'vulnerability scan',
-    'switch-config.php' => 'switch config', 'flexlm.php' => 'licence servers', 'network.php' => 'network',
-    'alerts.php' => 'alerts', 'devices.php' => 'devices', 'wireless.php' => 'wireless', 'port-map.php' => 'port map',
-];
-
-/**
- * Registered by require_api_auth() for every non-GET request: when the
- * request ends, records the endpoint, what was sent and how it went.
- */
-function audit_api_request(array $user): void {
-    $endpoint = basename(parse_url((string) ($_SERVER['SCRIPT_NAME'] ?? ''), PHP_URL_PATH) ?: '');
-    if (in_array($endpoint, AUDIT_SKIP_ENDPOINTS, true) || !empty($_GET['preview'])) return;
-    $method = (string) ($_SERVER['REQUEST_METHOD'] ?? '');
-    $body = json_decode((string) file_get_contents('php://input'), true);
-    // Display preferences (theme, columns) aren't worth an audit entry.
-    if ($endpoint === 'account.php' && $method === 'PATCH' && is_array($body) && array_keys($body) === ['prefs']) return;
-    $code = http_response_code() ?: 200;
-    $outcome = $code < 400 ? 'ok' : ($code === 401 || $code === 403 ? 'denied' : 'failed');
-    $query = array_diff_key($_GET, ['csrf' => 1]);
-    // POST creates, unless it's an action on something that exists (?id=…&run=1, ?decision=…, ?test=1 …).
-    $postVerb = isset($query['decision']) ? (string) $query['decision']
-        : (array_intersect_key($query, array_flip(['run', 'action', 'test', 'sync', 'scan', 'what'])) ? 'run' : 'create');
-    $verb = ['POST' => $postVerb, 'PUT' => 'save', 'PATCH' => 'change', 'DELETE' => 'remove'][$method] ?? $method;
-    $area = AUDIT_AREAS[$endpoint] ?? preg_replace('/\.php$/', '', $endpoint);
-    $target = $area . (isset($query['id']) ? " #{$query['id']}" : '');
-    audit_log('api.' . strtolower($method), ucfirst("$verb $target") . ($outcome === 'ok' ? '' : " ($code)"), $target,
-        ['endpoint' => "api/$endpoint", 'query' => $query ?: null, 'body' => is_array($body) ? audit_redact($body) : null, 'status' => $code],
-        $outcome, $user);
-}
-
-function audit_row(array $r): array {
-    return [
-        'id' => (int) $r['id'], 'ts' => (int) $r['ts'], 'username' => $r['username'], 'ip' => $r['ip'],
-        'action' => $r['action'], 'target' => $r['target'], 'summary' => $r['summary'],
-        'details' => $r['details'] !== null ? json_decode($r['details'], true) : null,
-        'outcome' => $r['outcome'], 'hash' => $r['hash'],
-    ];
-}
-WEBMON_FILE_EOF
-
 mkdir -p "$(dirname "$APP_DIR/includes/auth.php")"
 cat > "$APP_DIR/includes/auth.php" <<'WEBMON_FILE_EOF'
 <?php
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/audit.php';
+require_once __DIR__ . '/pro.php';   // audit log (WebMonitor Pro) or its stand-in
 
 /**
  * Session-based login for the dashboard and its API.
@@ -19870,551 +18568,6 @@ function logout(): void {
 }
 WEBMON_FILE_EOF
 
-mkdir -p "$(dirname "$APP_DIR/includes/changes.php")"
-cat > "$APP_DIR/includes/changes.php" <<'WEBMON_FILE_EOF'
-<?php
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/jobs.php';
-require_once __DIR__ . '/notify.php';
-require_once __DIR__ . '/audit.php';
-
-/**
- * Change management for updates. Every scheduled update window and every
- * manual update / reboot / agent upgrade / service restart becomes a change
- * record (CHG-000123) with:
- *   - what was planned: the hosts and, for updates, the packages pending on
- *     each when the record was made;
- *   - who requested it and, when approval is on, who approved or rejected it;
- *   - the outcome per host (job status, summary, the end of its output) and,
- *     after the next inventory, which planned packages are still pending.
- *
- * Emails go to a separate change list (Settings -> Change management)
- * through the first enabled email channel: an advance notice a set number of
- * hours before each scheduled window, a notice when a manual change starts,
- * decisions, and a completion report.
- *
- * With approval turned on, a scheduled window only runs if an admin approved
- * its change record beforehand; otherwise it's skipped. A planned change can
- * always be rejected (vetoed), approval or not. Manual changes are started by
- * an admin, so they count as approved by that admin.
- *
- * cli/cron.php -> process_schedules() -> change_process() every minute.
- */
-
-const CHANGE_JOB_TYPES = ['updates', 'reboot', 'agent_upgrade', 'service_restart'];   // 'refresh' changes nothing
-const CHANGE_DEFAULTS = ['recipients' => '', 'lead_hours' => 24, 'require_approval' => false, 'notify_manual' => true];
-const CHANGE_OPEN = ['planned', 'pending_approval', 'approved'];
-const CHANGE_STATUS_LABELS = [
-    'planned' => 'Planned', 'pending_approval' => 'Awaiting approval', 'approved' => 'Approved', 'rejected' => 'Rejected',
-    'in_progress' => 'In progress', 'completed' => 'Completed', 'partial' => 'Partly completed', 'failed' => 'Failed',
-    'skipped' => 'Not run', 'cancelled' => 'Cancelled',
-];
-const CHANGE_VERIFY_MAX_SEC = 12 * 3600;   // stop waiting for fresh inventories after this
-const CHANGE_OUTPUT_KEEP = 8000;           // end of each job's output kept on the record
-
-function change_number(int $id): string {
-    return sprintf('CHG-%06d', $id);
-}
-
-function change_settings(): array {
-    $raw = db()->query("SELECT v FROM settings WHERE k = 'change_mgmt'")->fetchColumn();
-    $saved = $raw ? (json_decode($raw, true) ?: []) : [];
-    return [
-        'recipients' => (string) ($saved['recipients'] ?? CHANGE_DEFAULTS['recipients']),
-        'lead_hours' => max(0, min(720, (int) ($saved['lead_hours'] ?? CHANGE_DEFAULTS['lead_hours']))),
-        'require_approval' => (bool) ($saved['require_approval'] ?? CHANGE_DEFAULTS['require_approval']),
-        'notify_manual' => (bool) ($saved['notify_manual'] ?? CHANGE_DEFAULTS['notify_manual']),
-    ];
-}
-
-/** Validates and saves; throws InvalidArgumentException. */
-function save_change_settings(array $in): array {
-    $cur = change_settings();
-    if (array_key_exists('recipients', $in)) {
-        $list = array_values(array_unique(array_filter(array_map('trim', preg_split('/[,;\s]+/', (string) $in['recipients'])))));
-        foreach ($list as $addr) {
-            if (!filter_var($addr, FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException("\"$addr\" isn't an email address.");
-        }
-        $cur['recipients'] = implode(', ', $list);
-    }
-    if (array_key_exists('lead_hours', $in)) {
-        $h = (int) $in['lead_hours'];
-        if ($h < 0 || $h > 720) throw new InvalidArgumentException('Notice must be 0-720 hours.');
-        $cur['lead_hours'] = $h;
-    }
-    foreach (['require_approval', 'notify_manual'] as $k) {
-        if (array_key_exists($k, $in)) $cur[$k] = (bool) $in[$k];
-    }
-    $before = change_settings();
-    db()->prepare("INSERT INTO settings (k, v) VALUES ('change_mgmt', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)")
-        ->execute([json_encode($cur)]);
-    // Open changes follow the approval setting: switched on, planned windows
-    // now need approval; switched off, those waiting no longer do.
-    if ($cur['require_approval'] !== $before['require_approval']) {
-        [$from, $to] = $cur['require_approval'] ? ['planned', 'pending_approval'] : ['pending_approval', 'planned'];
-        db()->prepare("UPDATE change_records SET status = ? WHERE status = ? AND source = 'schedule'")->execute([$to, $from]);
-    }
-    return $cur;
-}
-
-function fmt_change_time(int $ms): string {
-    return date('D j M Y H:i T', intdiv($ms, 1000));
-}
-
-/** Host label for messages. */
-function change_host_label(array $h): string {
-    return $h['name'] === $h['ip_address'] ? $h['ip_address'] : "{$h['name']} ({$h['ip_address']})";
-}
-
-/**
- * What a change will do on each host: {hostId: {host, packages: [...] | null,
- * pendingTotal, pendingSecurity}}. Packages are the updates pending in the
- * host's last inventory (only security ones for a security-only run).
- */
-function change_plan(array $hostIds, string $jobType, array $params): array {
-    $hostIds = array_values(array_unique(array_filter(array_map('intval', $hostIds))));
-    if (!$hostIds) return [];
-    $in = implode(',', $hostIds);
-    $rows = db()->query("SELECT h.id, h.name, h.ip_address, a.inventory FROM hosts h LEFT JOIN agents a ON a.host_id = h.id
-                         WHERE h.id IN ($in) ORDER BY h.name")->fetchAll();
-    $out = [];
-    foreach ($rows as $r) {
-        $entry = ['host' => change_host_label($r)];
-        if ($jobType === 'updates') {
-            $inv = json_decode((string) $r['inventory'], true) ?: [];
-            $pk = is_array($inv['updates']['packages'] ?? null) ? $inv['updates']['packages'] : null;
-            if ($pk !== null) {
-                $entry['pendingTotal'] = count($pk);
-                $entry['pendingSecurity'] = count(array_filter($pk, fn($p) => !empty($p['security'])));
-                if (!empty($params['security_only'])) $pk = array_values(array_filter($pk, fn($p) => !empty($p['security'])));
-                $entry['packages'] = array_map(fn($p) => array_filter([
-                    'name' => mb_substr((string) ($p['name'] ?? '?'), 0, 200),
-                    'current' => $p['current'] ?? null,
-                    'new' => $p['new'] ?? null,
-                    'kb' => $p['kb'] ?? null,
-                    'security' => !empty($p['security']),
-                ], fn($v) => $v !== null && $v !== ''), array_slice($pk, 0, 1000));
-            } else {
-                $entry['packages'] = null;   // no inventory yet
-            }
-        }
-        $out[(string) $r['id']] = $entry;
-    }
-    return $out;
-}
-
-function change_get(int $id): ?array {
-    $q = db()->prepare('SELECT * FROM change_records WHERE id = ?');
-    $q->execute([$id]);
-    return $q->fetch() ?: null;
-}
-
-/** Record for the browser. */
-function change_row(array $c, bool $full = false): array {
-    $params = json_decode($c['params'], true) ?: [];
-    $planned = json_decode($c['planned'], true) ?: [];
-    $row = [
-        'id' => (int) $c['id'],
-        'number' => change_number((int) $c['id']),
-        'source' => $c['source'],
-        'scheduleId' => $c['schedule_id'] !== null ? (int) $c['schedule_id'] : null,
-        'title' => $c['title'],
-        'jobType' => $c['job_type'],
-        'action' => job_label($c['job_type'], $params),
-        'plannedAt' => (int) $c['planned_at'],
-        'status' => $c['status'],
-        'statusLabel' => CHANGE_STATUS_LABELS[$c['status']] ?? $c['status'],
-        'hostCount' => count(json_decode($c['host_ids'], true) ?: []),
-        'hosts' => array_values(array_map(fn($p) => $p['host'], $planned)),
-        'packageCount' => array_sum(array_map(fn($p) => is_array($p['packages'] ?? null) ? count($p['packages']) : 0, $planned)),
-        'requestedBy' => $c['requested_name'],
-        'decidedBy' => $c['decided_name'],
-        'decidedAt' => $c['decided_at'] !== null ? (int) $c['decided_at'] : null,
-        'decisionNote' => $c['decision_note'],
-        'createdAt' => (int) $c['created_at'],
-        'startedAt' => $c['started_at'] !== null ? (int) $c['started_at'] : null,
-        'finishedAt' => $c['finished_at'] !== null ? (int) $c['finished_at'] : null,
-        'verifiedAt' => $c['verified_at'] !== null ? (int) $c['verified_at'] : null,
-        'noticeSentAt' => $c['notice_sent_at'] !== null ? (int) $c['notice_sent_at'] : null,
-        'reportSentAt' => $c['report_sent_at'] !== null ? (int) $c['report_sent_at'] : null,
-    ];
-    if ($full) {
-        $row['planned'] = $planned;
-        $row['outcome'] = json_decode((string) $c['outcome'], true) ?: null;
-        $row['skipped'] = json_decode((string) $c['skipped'], true) ?: [];
-        $row['verification'] = json_decode((string) $c['verification'], true) ?: null;
-        $row['jobIds'] = array_map('intval', json_decode($c['job_ids'], true) ?: []);
-        $row['history'] = array_map('audit_row', db()->query(
-            "SELECT * FROM audit_log WHERE action LIKE 'change.%' AND target = " . db()->quote(change_number((int) $c['id'])) . ' ORDER BY id')->fetchAll());
-    }
-    return $row;
-}
-
-function change_user_name(?int $userId): ?string {
-    if ($userId === null) return null;
-    $q = db()->prepare('SELECT username FROM users WHERE id = ?');
-    $q->execute([$userId]);
-    return $q->fetchColumn() ?: null;
-}
-
-function change_set(int $id, array $fields): void {
-    $sets = implode(', ', array_map(fn($k) => "$k = ?", array_keys($fields)));
-    db()->prepare("UPDATE change_records SET $sets WHERE id = ?")->execute([...array_values($fields), $id]);
-}
-
-// ---------------------------------------------------------------- creating
-
-/**
- * The change record for one occurrence of a schedule, made (and announced)
- * if it doesn't exist yet. Returns the row.
- */
-function change_for_occurrence(array $sched, DateTimeImmutable $occ): array {
-    $key = $occ->format('Y-m-d H:i');
-    $q = db()->prepare('SELECT * FROM change_records WHERE schedule_id = ? AND occurrence_key = ?');
-    $q->execute([$sched['id'], $key]);
-    if ($c = $q->fetch()) return $c;
-
-    $settings = change_settings();
-    $params = json_decode($sched['params'], true) ?: [];
-    $hostIds = schedule_host_ids($sched);
-    $requester = $sched['created_by'] !== null ? (int) $sched['created_by'] : null;
-    $status = $settings['require_approval'] ? 'pending_approval' : 'planned';
-    db()->prepare('INSERT IGNORE INTO change_records (source, schedule_id, occurrence_key, title, job_type, params, planned_at, status,
-                   host_ids, planned, job_ids, requested_by, requested_name, created_at)
-                   VALUES (\'schedule\', ?, ?, ?, ?, ?, ?, ?, ?, ?, \'[]\', ?, ?, ?)')
-        ->execute([$sched['id'], $key, mb_substr($sched['name'], 0, 120), $sched['job_type'], $sched['params'],
-                   $occ->getTimestamp() * 1000, $status, json_encode($hostIds),
-                   json_encode((object) change_plan($hostIds, $sched['job_type'], $params)),
-                   $requester, change_user_name($requester), now_ms()]);
-    $q->execute([$sched['id'], $key]);
-    $c = $q->fetch();
-    $num = change_number((int) $c['id']);
-    audit_log('change.created', "$num raised for scheduled window \"{$sched['name']}\" at " . fmt_change_time((int) $c['planned_at'])
-        . ' on ' . count($hostIds) . ' host(s)' . ($status === 'pending_approval' ? ', awaiting approval' : ''),
-        $num, ['scheduleId' => (int) $sched['id'], 'hostIds' => $hostIds, 'status' => $status], 'ok', null, true);
-    change_send_notice($c);
-    return change_get((int) $c['id']);
-}
-
-/**
- * A change record for jobs an admin (or a schedule's "Run now") just
- * queued. $res is create_jobs()'s result. Nothing is recorded for job types
- * that change nothing, or if no job was created.
- */
-function change_record_manual(array $res, string $type, array $params, ?array $user, string $title,
-                              ?int $scheduleId = null, ?int $runId = null): ?int {
-    if (!in_array($type, CHANGE_JOB_TYPES, true) || !$res['created']) return null;
-    $ids = implode(',', array_map('intval', $res['created']));
-    $hostIds = array_map('intval', db()->query("SELECT host_id FROM jobs WHERE id IN ($ids)")->fetchAll(PDO::FETCH_COLUMN));
-    $now = now_ms();
-    $settings = change_settings();
-    db()->prepare('INSERT INTO change_records (source, schedule_id, schedule_run_id, title, job_type, params, planned_at, status, host_ids,
-                   planned, job_ids, skipped, requested_by, requested_name, decided_by, decided_name, decided_at, decision_note,
-                   created_at, started_at) VALUES (\'manual\', ?, ?, ?, ?, ?, ?, \'in_progress\', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        ->execute([$scheduleId, $runId, mb_substr($title, 0, 120), $type, json_encode(job_params($type, $params)), $now,
-                   json_encode($hostIds), json_encode((object) change_plan($hostIds, $type, $params)), json_encode($res['created']),
-                   json_encode($res['skipped']), $user['id'] ?? null, $user['username'] ?? null,
-                   $user['id'] ?? null, $user['username'] ?? null, $now,
-                   $settings['require_approval'] ? 'Manual change: approved by the admin who started it' : null, $now, $now]);
-    $id = (int) db()->lastInsertId();
-    $num = change_number($id);
-    audit_log('change.created', "$num: " . job_label($type, $params) . ' started on ' . count($hostIds) . ' host(s) ("' . $title . '")',
-        $num, ['jobIds' => $res['created'], 'hostIds' => $hostIds, 'skipped' => $res['skipped']], 'ok', $user);
-    if ($settings['notify_manual']) change_send_notice(change_get($id));
-    return $id;
-}
-
-// ---------------------------------------------------------------- decisions
-
-/**
- * Approve or reject an open change. Throws InvalidArgumentException when the
- * change can't take that decision.
- */
-function change_decide(int $id, string $decision, string $note, array $user): array {
-    $c = change_get($id);
-    if (!$c) throw new InvalidArgumentException('Change not found.');
-    $num = change_number($id);
-    if ($decision === 'approve') {
-        if ($c['status'] !== 'pending_approval') throw new InvalidArgumentException("$num isn't waiting for approval.");
-        $status = 'approved';
-    } elseif ($decision === 'reject') {
-        if (!in_array($c['status'], CHANGE_OPEN, true)) throw new InvalidArgumentException("$num has already run or been closed.");
-        $status = 'rejected';
-    } else {
-        throw new InvalidArgumentException('Unknown decision.');
-    }
-    if ($status === 'rejected' && trim($note) === '') throw new InvalidArgumentException('Give a reason for rejecting it.');
-    $note = mb_substr(trim($note), 0, 500);
-    change_set($id, ['status' => $status, 'decided_by' => $user['id'], 'decided_name' => $user['username'],
-                     'decided_at' => now_ms(), 'decision_note' => $note !== '' ? $note : null]);
-    $self = $c['requested_by'] !== null && (int) $c['requested_by'] === (int) $user['id'];
-    audit_log('change.' . $status, "$num " . ($status === 'approved' ? 'approved' : 'rejected') . " by {$user['username']}"
-        . ($self ? ' (also the requester)' : '') . ($note !== '' ? ": $note" : ''), $num, ['note' => $note ?: null], 'ok', $user);
-    $c = change_get($id);
-    change_email("[$num] " . ($status === 'approved' ? 'Approved' : 'Rejected — will not run') . ": {$c['title']}",
-        change_header($c) . "\n" . ($status === 'approved' ? 'Approved' : 'Rejected') . " by {$user['username']}"
-        . ($note !== '' ? "\nNote: $note" : '') . "\n", $num);
-    return $c;
-}
-
-// ---------------------------------------------------------------- running
-
-/**
- * Called by process_schedules() at a window's time, before running it.
- * Returns ['run' => bool, 'change' => row]: a rejected change, or one still
- * waiting for approval, doesn't run (and that is recorded and emailed).
- */
-function change_gate(array $sched, DateTimeImmutable $occ): array {
-    $c = change_for_occurrence($sched, $occ);
-    $num = change_number((int) $c['id']);
-    $reason = null;
-    if ($c['status'] === 'rejected') {
-        $reason = 'it was rejected' . ($c['decided_name'] ? " by {$c['decided_name']}" : '');
-    } elseif ($c['status'] === 'pending_approval' || ($c['status'] === 'planned' && change_settings()['require_approval'])) {
-        $reason = 'it was not approved before the window';
-    }
-    if ($reason === null) return ['run' => true, 'change' => $c];
-
-    if ($c['status'] !== 'rejected') change_set((int) $c['id'], ['status' => 'skipped', 'finished_at' => now_ms()]);
-    audit_log('change.not_run', "$num: window \"{$sched['name']}\" did not run because $reason", $num, null, 'ok', null, true);
-    change_email("[$num] Not run: {$c['title']}", change_header(change_get((int) $c['id'])) . "\nThe window did not run because $reason.\n", $num);
-    return ['run' => false, 'change' => $c];
-}
-
-/** Links a scheduled change to the jobs its window just queued. */
-function change_started(array $c, int $runId, array $res): void {
-    $num = change_number((int) $c['id']);
-    $ids = array_map('intval', $res['created']);
-    $hostIds = $ids ? array_map('intval', db()->query('SELECT host_id FROM jobs WHERE id IN (' . implode(',', $ids) . ')')->fetchAll(PDO::FETCH_COLUMN)) : [];
-    $now = now_ms();
-    $fields = ['schedule_run_id' => $runId, 'job_ids' => json_encode($ids), 'skipped' => json_encode($res['skipped']), 'started_at' => $now];
-    // Hosts are re-resolved at run time (groups, "All Linux"); keep the plan in step.
-    $planned = json_decode($c['planned'], true) ?: [];
-    $missing = array_diff($hostIds, array_map('intval', array_keys($planned)));
-    if ($missing) {
-        $planned += change_plan($missing, $c['job_type'], json_decode($c['params'], true) ?: []);
-        $fields['planned'] = json_encode((object) $planned);
-    }
-    $fields['host_ids'] = json_encode($hostIds);
-    if ($ids) {
-        $fields['status'] = 'in_progress';
-    } else {
-        $fields['status'] = 'skipped';
-        $fields['finished_at'] = $now;
-    }
-    change_set((int) $c['id'], $fields);
-    audit_log($ids ? 'change.started' : 'change.not_run', $ids ? "$num started on " . count($ids) . ' host(s)'
-        : "$num: nothing ran (" . ($res['skipped'] ? 'every host was skipped' : 'no matching hosts') . ')', $num,
-        ['jobIds' => $ids, 'skipped' => $res['skipped']], 'ok', null, true);
-    if (!$ids) change_email("[$num] Not run: {$c['title']}", change_header(change_get((int) $c['id'])) . "\nNothing ran.\n"
-        . change_skipped_text($res['skipped']), $num);
-}
-
-/** Cron, every minute: notices, stale windows, finished changes, verification. */
-function change_process(): void {
-    $pdo = db();
-    $settings = change_settings();
-    $now = new DateTimeImmutable();
-
-    // 1. Advance notices: raise the record once a window is within the notice period.
-    if ($settings['lead_hours'] > 0) {
-        foreach ($pdo->query('SELECT * FROM update_schedules WHERE enabled = 1')->fetchAll() as $s) {
-            if (!in_array($s['job_type'], CHANGE_JOB_TYPES, true)) continue;
-            $next = schedule_next_run($s, $now);
-            if ($next && $next->getTimestamp() - $now->getTimestamp() <= $settings['lead_hours'] * 3600) change_for_occurrence($s, $next);
-        }
-    }
-
-    // 2. Open changes whose window passed without running (schedule edited, disabled or deleted, server down).
-    $late = now_ms() - (SCHEDULE_GRACE_MIN + 5) * 60000;
-    foreach ($pdo->query("SELECT * FROM change_records WHERE status IN ('planned', 'pending_approval', 'approved') AND planned_at < $late")->fetchAll() as $c) {
-        $num = change_number((int) $c['id']);
-        change_set((int) $c['id'], ['status' => 'cancelled', 'finished_at' => now_ms()]);
-        audit_log('change.cancelled', "$num cancelled: its window passed without running (the schedule was changed, disabled or deleted, or the server was down)",
-            $num, null, 'ok', null, true);
-        change_email("[$num] Cancelled: {$c['title']}", change_header(change_get((int) $c['id']))
-            . "\nThe window passed without running: the schedule was changed, disabled or deleted, or the server was down.\n", $num);
-    }
-
-    // 3. Changes whose jobs have all finished: record the outcome and send the report.
-    foreach ($pdo->query("SELECT * FROM change_records WHERE status = 'in_progress'")->fetchAll() as $c) {
-        $ids = array_map('intval', json_decode($c['job_ids'], true) ?: []);
-        $jobs = $ids ? $pdo->query(JOB_SELECT . ' WHERE j.id IN (' . implode(',', $ids) . ')')->fetchAll() : [];
-        if (array_filter($jobs, fn($j) => in_array($j['status'], ['queued', 'running'], true))) continue;
-        change_finish($c, $jobs);
-    }
-
-    // 4. Verification: which planned packages are still pending in each host's next inventory.
-    foreach ($pdo->query("SELECT * FROM change_records WHERE job_type = 'updates' AND status IN ('completed', 'partial')
-                          AND verified_at IS NULL")->fetchAll() as $c) {
-        change_verify($c);
-    }
-}
-
-function change_finish(array $c, array $jobs): void {
-    $num = change_number((int) $c['id']);
-    $outcome = [];
-    foreach ($jobs as $j) {
-        $out = (string) $j['output'];
-        $outcome[(string) $j['host_id']] = [
-            'host' => change_host_label(['name' => $j['host_name'], 'ip_address' => $j['ip_address']]),
-            'jobId' => (int) $j['id'], 'status' => $j['status'], 'summary' => $j['summary'],
-            'exitCode' => $j['exit_code'] !== null ? (int) $j['exit_code'] : null,
-            'startedAt' => $j['started_at'] !== null ? (int) $j['started_at'] : null,
-            'finishedAt' => $j['finished_at'] !== null ? (int) $j['finished_at'] : null,
-            'output' => strlen($out) > CHANGE_OUTPUT_KEEP ? "[…]\n" . substr($out, -CHANGE_OUTPUT_KEEP) : $out,
-            'outputSha256' => $out !== '' ? hash('sha256', $out) : null,
-        ];
-    }
-    $ok = count(array_filter($outcome, fn($o) => $o['status'] === 'succeeded'));
-    $skipped = json_decode((string) $c['skipped'], true) ?: [];
-    $status = $ok === 0 ? 'failed' : ($ok === count($outcome) && !$skipped ? 'completed' : 'partial');
-    change_set((int) $c['id'], ['status' => $status, 'outcome' => json_encode((object) $outcome), 'finished_at' => now_ms()]);
-    $summary = "$ok of " . count($outcome) . ' succeeded' . ($skipped ? ', ' . count($skipped) . ' skipped' : '');
-    audit_log('change.' . $status, "$num " . strtolower(CHANGE_STATUS_LABELS[$status]) . ": $summary", $num,
-        ['results' => array_map(fn($o) => ['host' => $o['host'], 'status' => $o['status'], 'summary' => $o['summary'],
-                                           'outputSha256' => $o['outputSha256']], array_values($outcome))], 'ok', null, true);
-    $c = change_get((int) $c['id']);
-    change_send_report($c, $summary);
-}
-
-function change_verify(array $c): void {
-    $outcome = json_decode((string) $c['outcome'], true) ?: [];
-    $planned = json_decode($c['planned'], true) ?: [];
-    $ver = json_decode((string) $c['verification'], true) ?: [];
-    $pending = 0;
-    foreach ($outcome as $hid => $o) {
-        if (isset($ver[$hid]) || $o['status'] !== 'succeeded') continue;
-        $q = db()->prepare('SELECT inventory, inventory_at FROM agents WHERE host_id = ?');
-        $q->execute([(int) $hid]);
-        $a = $q->fetch();
-        if (!$a || (int) $a['inventory_at'] <= (int) $o['finishedAt']) {
-            $pending++;
-            continue;
-        }
-        $inv = json_decode((string) $a['inventory'], true) ?: [];
-        $now = array_map(fn($p) => (string) ($p['name'] ?? ''), is_array($inv['updates']['packages'] ?? null) ? $inv['updates']['packages'] : []);
-        $want = array_map(fn($p) => $p['name'], is_array($planned[$hid]['packages'] ?? null) ? $planned[$hid]['packages'] : []);
-        $ver[$hid] = ['checkedAt' => (int) $a['inventory_at'], 'stillPending' => array_values(array_intersect($want, $now)),
-                      'plannedCount' => count($want)];
-    }
-    $done = $pending === 0 || now_ms() - (int) $c['finished_at'] > CHANGE_VERIFY_MAX_SEC * 1000;
-    $fields = ['verification' => json_encode((object) $ver)];
-    if ($done) $fields['verified_at'] = now_ms();
-    change_set((int) $c['id'], $fields);
-    if ($done) {
-        $num = change_number((int) $c['id']);
-        $left = array_sum(array_map(fn($v) => count($v['stillPending']), $ver));
-        audit_log('change.verified', "$num verified against " . count($ver) . " host inventor" . (count($ver) === 1 ? 'y' : 'ies')
-            . ": $left planned package(s) still pending" . ($pending ? ", $pending host(s) didn't report in time" : ''), $num,
-            ['verification' => $ver], 'ok', null, true);
-    }
-}
-
-// ---------------------------------------------------------------- email
-
-/** The first enabled email channel's settings, sending to the change list. */
-function change_email_channel(): ?array {
-    $to = change_settings()['recipients'];
-    if ($to === '') return null;
-    $ch = db()->query("SELECT * FROM notification_channels WHERE type = 'email' AND enabled = 1 ORDER BY id LIMIT 1")->fetch();
-    if (!$ch) return null;
-    $cfg = json_decode((string) $ch['config'], true) ?: [];
-    $cfg['to'] = $to;
-    return ['id' => (int) $ch['id'], 'cfg' => $cfg];
-}
-
-/** Sends to the change list; returns null or an error. Logged in the audit trail either way. */
-function change_email(string $subject, string $body, ?string $num = null): ?string {
-    $ch = change_email_channel();
-    if (!$ch) return change_settings()['recipients'] === '' ? 'no change list set' : 'no enabled email channel';
-    $err = smtp_send($ch['cfg'], $subject, $body . "\n-- \nSent by WebMonitor change management");
-    log_notification($ch['id'], null, $err === null, ($err ?? 'sent') . ' (change list)');
-    audit_log('change.email', ($err === null ? 'Emailed' : 'Could not email') . " the change list: $subject" . ($err ? " — $err" : ''),
-        $num, ['to' => $ch['cfg']['to']], $err === null ? 'ok' : 'failed', null, true);
-    return $err;
-}
-
-function change_header(array $c): string {
-    $params = json_decode($c['params'], true) ?: [];
-    $lines = [
-        'Change:       ' . change_number((int) $c['id']),
-        'Status:       ' . (CHANGE_STATUS_LABELS[$c['status']] ?? $c['status']),
-        'Title:        ' . $c['title'],
-        'Action:       ' . job_label($c['job_type'], $params),
-        ($c['source'] === 'schedule' ? 'Window:       ' : 'Started:      ') . fmt_change_time((int) $c['planned_at']),
-        'Requested by: ' . ($c['requested_name'] ?: 'WebMonitor') . ($c['source'] === 'schedule' ? ' (scheduled)' : ' (manual)'),
-    ];
-    if ($c['decided_name']) {
-        $lines[] = 'Decision:     ' . ($c['status'] === 'rejected' ? 'Rejected' : 'Approved') . " by {$c['decided_name']}"
-            . ($c['decided_at'] ? ' at ' . fmt_change_time((int) $c['decided_at']) : '')
-            . ($c['decision_note'] ? " — {$c['decision_note']}" : '');
-    }
-    return implode("\n", $lines) . "\n";
-}
-
-function change_plan_text(array $c): string {
-    $planned = json_decode($c['planned'], true) ?: [];
-    if (!$planned) return "Hosts: none matched yet (worked out again when the window runs).\n";
-    $out = 'Hosts (' . count($planned) . "):\n";
-    foreach ($planned as $p) {
-        $out .= "  - {$p['host']}";
-        if (array_key_exists('packages', $p)) {
-            if ($p['packages'] === null) {
-                $out .= ": no update inventory yet\n";
-                continue;
-            }
-            $n = count($p['packages']);
-            $sec = count(array_filter($p['packages'], fn($x) => !empty($x['security'])));
-            $out .= ": $n update" . ($n === 1 ? '' : 's') . ($sec ? " ($sec security)" : '') . "\n";
-            foreach (array_slice($p['packages'], 0, 40) as $x) {
-                $out .= '      ' . $x['name'] . (isset($x['new']) ? ' ' . (isset($x['current']) ? "{$x['current']} → " : '') . $x['new'] : '')
-                    . (isset($x['kb']) ? " ({$x['kb']})" : '') . (!empty($x['security']) ? ' [security]' : '') . "\n";
-            }
-            if ($n > 40) $out .= '      … and ' . ($n - 40) . " more (full list in WebMonitor)\n";
-        } else {
-            $out .= "\n";
-        }
-    }
-    return $out;
-}
-
-function change_skipped_text(array $skipped): string {
-    return $skipped ? "Skipped:\n" . implode("\n", array_map(fn($s) => "  - {$s['host']}: {$s['reason']}", $skipped)) . "\n" : '';
-}
-
-function change_send_notice(array $c): void {
-    $num = change_number((int) $c['id']);
-    $when = $c['source'] === 'schedule' ? 'Planned' : 'Started';
-    $body = change_header($c) . "\n" . change_plan_text($c);
-    if ($c['skipped']) $body .= change_skipped_text(json_decode((string) $c['skipped'], true) ?: []);
-    if ($c['status'] === 'pending_approval') {
-        $body .= "\nThis change needs approval before " . fmt_change_time((int) $c['planned_at'])
-            . " or it won't run. Approve or reject it in WebMonitor: Updates → Change records.\n";
-    } elseif ($c['source'] === 'schedule') {
-        $body .= "\nTo stop it, reject it in WebMonitor (Updates → Change records) or turn the schedule off.\n";
-    }
-    if (change_email("[$num] $when change: {$c['title']} — " . fmt_change_time((int) $c['planned_at']), $body, $num) === null) {
-        change_set((int) $c['id'], ['notice_sent_at' => now_ms()]);
-    }
-}
-
-function change_send_report(array $c, string $summary): void {
-    $num = change_number((int) $c['id']);
-    $outcome = json_decode((string) $c['outcome'], true) ?: [];
-    $body = change_header($c) . 'Finished:     ' . fmt_change_time((int) $c['finished_at']) . "\nResult:       $summary\n\n";
-    foreach ($outcome as $o) {
-        $body .= ($o['status'] === 'succeeded' ? '  ✔ ' : '  ✘ ') . "{$o['host']}: " . ($o['summary'] ?: $o['status'])
-            . ($o['status'] !== 'succeeded' ? " ({$o['status']})" : '') . "\n";
-    }
-    $body .= change_skipped_text(json_decode((string) $c['skipped'], true) ?: []);
-    $body .= "\nPlanned:\n" . change_plan_text($c);
-    if (change_email("[$num] " . CHANGE_STATUS_LABELS[$c['status']] . ": {$c['title']} — $summary", $body, $num) === null) {
-        change_set((int) $c['id'], ['report_sent_at' => now_ms()]);
-    }
-}
-WEBMON_FILE_EOF
-
 mkdir -p "$(dirname "$APP_DIR/includes/checker.php")"
 cat > "$APP_DIR/includes/checker.php" <<'WEBMON_FILE_EOF'
 <?php
@@ -20426,6 +18579,7 @@ require_once __DIR__ . '/portmap.php';
 require_once __DIR__ . '/wireless.php';
 require_once __DIR__ . '/devicescan.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/pro.php';   // pro_host_extras(): WebMonitor Pro or a stand-in
 
 /**
  * Checks whether a host's IP address is reachable (TCP connect against a
@@ -20543,9 +18697,11 @@ function host_summaries(array $hosts): array {
     $scanned = device_card_summaries();
     $services = service_card_summaries();
     $groups = host_group_map();
-    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services, $groups) {
+    $pro = pro_host_extras($hosts);                       // WebMonitor Pro: e.g. remote access methods
+    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services, $groups, $pro) {
         $id = (int) $host['id'];
         return summarize_host($host, $historyById[$id]) + [
+            'remote' => $pro[$id]['remote'] ?? null,            // Pro: remote access methods for the card
             'groupIds' => $groups[$id] ?? [],                   // card groups (Settings -> Groups)
             'agent' => $agents[$id] ?? null,
             'nas' => $nas[$id] ?? null,                          // NAS health (SNMP) for the card
@@ -22520,653 +20676,6 @@ function run_subnet_scans(?string $only = null, bool $force = false): array {
         $out[$subnet] = ($result ?? []) + ['removed' => $removed, 'skipped' => $skipped];
     }
     return $out;
-}
-WEBMON_FILE_EOF
-
-mkdir -p "$(dirname "$APP_DIR/includes/flexlm.php")"
-cat > "$APP_DIR/includes/flexlm.php" <<'WEBMON_FILE_EOF'
-<?php
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/agents.php';   // now_ms()
-
-/**
- * FlexLM licence servers (Licences tab).
- *
- * cli/cron.php runs flexlm_run_due() every minute. Servers that are due (or
- * that someone pressed "Check now" on) are checked in parallel with
- * "lmutil lmstat -a -c port@host". The output gives the license server and
- * vendor daemon status, each feature's licences issued and in use, expiry
- * dates and who has each licence checked out.
- *
- * lmutil is Flexera's tool and can't be shipped with WebMonitor: copy it to
- * one of FLEXLM_LMUTIL_PATHS (docs/flexlm.md). Most lmutil builds ask for the
- * LSB loader (ld-lsb-x86-64.so.3), which Rocky Linux doesn't have; when the
- * loader is missing, lmutil is started through the normal glibc loader
- * instead, so no system changes are needed.
- *
- * Status: up; warn (a triad member or vendor daemon down, a feature full or
- * expiring soon); down (two failed checks in a row); unknown (lmutil missing
- * or not runnable); pending (not checked yet).
- */
-
-const FLEXLM_LMUTIL_PATHS = [
-    '/usr/local/bin/lmutil',
-    '/opt/flexlm/lmutil',
-    '/var/lib/webmonitor/lmutil',          // the Docker image's data volume
-    '/var/lib/webmonitor/flexlm/lmutil',
-    '/usr/bin/lmutil',
-];
-const FLEXLM_INTERVALS = [60, 120, 300, 600, 900, 1800, 3600];
-const FLEXLM_TIMEOUT_SEC = 20;             // per lmstat run
-const FLEXLM_PARALLEL = 12;
-const FLEXLM_DOWN_AFTER = 2;               // failures in a row before it shows down
-const FLEXLM_USAGE_KEEP_DAYS = 14;
-const FLEXLM_HOURLY_KEEP_DAYS = 400;
-const FLEXLM_CHECKOUTS_KEEP_DAYS = 180;
-const FLEXLM_OUTPUT_MAX = 256 * 1024;
-// port@host, @host (default ports), or a triad of three joined by commas. No file paths.
-const FLEXLM_TARGET_PART_RE = '/^(\d{1,5})?@[A-Za-z0-9][A-Za-z0-9._\-]{0,252}$/';
-
-// ---------------------------------------------------------------- lmutil
-
-/** Path to lmutil, or null when it isn't installed. */
-function flexlm_lmutil_path(): ?string {
-    foreach (FLEXLM_LMUTIL_PATHS as $p) {
-        if (@is_file($p) && @is_executable($p)) return $p;
-    }
-    return null;
-}
-
-/**
- * The ELF interpreter a binary asks for (e.g. /lib64/ld-lsb-x86-64.so.3) and
- * its class (32 or 64), or null for a script or unreadable file.
- */
-function flexlm_elf_interp(string $path): ?array {
-    $f = @fopen($path, 'rb');
-    if (!$f) return null;
-    try {
-        $h = fread($f, 64);
-        if (strlen($h) < 52 || substr($h, 0, 4) !== "\x7fELF" || ord($h[5]) !== 1) return null;   // little-endian only
-        $is64 = ord($h[4]) === 2;
-        if ($is64) {
-            $phoff = unpack('P', substr($h, 0x20, 8))[1];
-            [$phentsize, $phnum] = array_values(unpack('v2', substr($h, 0x36, 4)));
-        } else {
-            $phoff = unpack('V', substr($h, 0x1C, 4))[1];
-            [$phentsize, $phnum] = array_values(unpack('v2', substr($h, 0x2A, 4)));
-        }
-        for ($i = 0; $i < min($phnum, 64); $i++) {
-            fseek($f, $phoff + $i * $phentsize);
-            $ph = fread($f, $phentsize);
-            if (strlen($ph) < ($is64 ? 56 : 32) || unpack('V', substr($ph, 0, 4))[1] !== 3) continue;   // PT_INTERP
-            [$off, $size] = $is64 ? [unpack('P', substr($ph, 8, 8))[1], unpack('P', substr($ph, 32, 8))[1]]
-                                  : [unpack('V', substr($ph, 4, 4))[1], unpack('V', substr($ph, 16, 4))[1]];
-            fseek($f, $off);
-            return ['interp' => rtrim((string) fread($f, min($size, 256)), "\0"), 'bits' => $is64 ? 64 : 32];
-        }
-        return ['interp' => null, 'bits' => $is64 ? 64 : 32];   // static binary
-    } finally {
-        fclose($f);
-    }
-}
-
-/**
- * The command that starts lmutil: [argv prefix, problem]. Problem is a message
- * for the Licences tab when lmutil can't run (argv prefix is then null).
- */
-function flexlm_lmutil_command(): array {
-    static $cached = null;
-    if ($cached !== null) return $cached;
-    $path = flexlm_lmutil_path();
-    if ($path === null) return $cached = [null, 'lmutil is not installed on this server. See Help → FlexLM licences.'];
-    $elf = flexlm_elf_interp($path);
-    if ($elf === null) return $cached = [[$path], null];   // a wrapper script: run it as it is
-    if ($elf['interp'] === null || is_file($elf['interp'])) return $cached = [[$path], null];
-    // The LSB loader is missing: use the system's own loader of the same class.
-    $loaders = $elf['bits'] === 64 ? ['/lib64/ld-linux-x86-64.so.2', '/lib/ld-linux-x86-64.so.2', '/lib/ld-linux-aarch64.so.1']
-                                    : ['/lib/ld-linux.so.2'];
-    foreach ($loaders as $l) {
-        if (is_file($l)) return $cached = [[$l, $path], null];
-    }
-    return $cached = [null, $elf['bits'] === 32
-        ? 'lmutil is a 32-bit program and the 32-bit system libraries are not installed (dnf install glibc.i686).'
-        : "lmutil needs {$elf['interp']}, which this system doesn't have."];
-}
-
-/**
- * Runs "lmutil lmstat -a -c TARGET" for each target, several at once, each
- * stopped after $timeout seconds. Returns [key => [output, ms, timedOut]].
- */
-function flexlm_lmstat_many(array $targets, ?array $prefix = null, int $timeout = FLEXLM_TIMEOUT_SEC): array {
-    $prefix = $prefix ?? flexlm_lmutil_command()[0];   // tests pass their own command
-    $out = [];
-    if ($prefix === null) return $out;
-    foreach (array_chunk($targets, FLEXLM_PARALLEL, true) as $batch) {
-        $running = [];
-        foreach ($batch as $key => $target) {
-            $cmd = array_merge($prefix, ['lmstat', '-a', '-c', $target]);
-            $p = proc_open($cmd, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]], $pipes,
-                           null, ['PATH' => '/usr/bin:/bin', 'LANG' => 'C', 'HOME' => sys_get_temp_dir()]);
-            if (!is_resource($p)) {
-                $out[$key] = ['Could not start lmutil.', 0, false];
-                continue;
-            }
-            stream_set_blocking($pipes[1], false);
-            $running[$key] = ['p' => $p, 'pipe' => $pipes[1], 'buf' => '', 'start' => microtime(true)];
-        }
-        while ($running) {
-            $read = array_column($running, 'pipe');
-            $w = $e = null;
-            @stream_select($read, $w, $e, 0, 200000);
-            foreach ($running as $key => &$r) {
-                $chunk = fread($r['pipe'], 65536);
-                if ($chunk !== false && $chunk !== '' && strlen($r['buf']) < FLEXLM_OUTPUT_MAX) $r['buf'] .= $chunk;
-                $elapsed = microtime(true) - $r['start'];
-                $done = feof($r['pipe']);
-                $timedOut = !$done && $elapsed > $timeout;
-                if ($done || $timedOut) {
-                    if ($timedOut) proc_terminate($r['p'], 9);
-                    fclose($r['pipe']);
-                    proc_close($r['p']);
-                    $out[$key] = [substr($r['buf'], 0, FLEXLM_OUTPUT_MAX), (int) round($elapsed * 1000), $timedOut];
-                    unset($running[$key]);
-                }
-            }
-            unset($r);
-        }
-    }
-    return $out;
-}
-
-// ---------------------------------------------------------------- parsing
-
-/**
- * Reads lmstat -a output. Returns:
- *   up        bool: at least one license server answered UP
- *   message   why it's down, or null
- *   servers   [[name, up]] license servers (three for a triad)
- *   lmgrd     lmgrd version, or null
- *   vendors   [[name, up, version]]
- *   features  [name => [vendor, version, total, used, reserved, expires (Y-m-d|null)]]
- *   checkouts [[feature, user, host, display, version, licenses, start]]
- */
-function flexlm_parse(string $text, ?int $now = null): array {
-    $r = ['up' => false, 'message' => null, 'servers' => [], 'lmgrd' => null, 'vendors' => [], 'features' => [], 'checkouts' => []];
-    $lines = preg_split('/\r?\n/', $text);
-    $feature = null;
-    foreach ($lines as $line) {
-        if (preg_match('/^\s*(\S+): license server (UP|DOWN)\b.*?(?:\bv(\d+[\d.]*))?\s*$/i', $line, $m)) {
-            $up = strtoupper($m[2]) === 'UP';
-            $r['servers'][] = [$m[1], $up];
-            if ($up) { $r['up'] = true; $r['lmgrd'] = $r['lmgrd'] ?? ($m[3] ?? null) ?: null; }
-            continue;
-        }
-        if (preg_match('/^Users of (\S+?):\s+\((.*)\)\s*$/', $line, $m)) {
-            $feature = $m[1];
-            $total = $used = 0;
-            if (preg_match('/Total of (\d+) licen[sc]es? issued;\s*Total of (\d+) licen[sc]es? in use/i', $m[2], $t)) {
-                [$total, $used] = [(int) $t[1], (int) $t[2]];
-            }
-            $r['features'][$feature] = [null, null, $total, $used, 0, null];
-            continue;
-        }
-        if ($feature === null) {
-            // Vendor daemon section: "MLM: UP v11.16.2" or "MLM: The desired vendor daemon is down."
-            if (preg_match('/^\s+([A-Za-z0-9_\-]+): UP\b(?:\s+v(\d+[\d.]*))?/', $line, $m)) {
-                $r['vendors'][] = [$m[1], true, $m[2] ?? null];
-            } elseif (preg_match('/^\s+([A-Za-z0-9_\-]+): (.*vendor daemon is down.*|.*DOWN.*|Cannot .*)$/i', $line, $m)
-                      && stripos($line, 'license server') === false) {
-                $r['vendors'][] = [$m[1], false, null];
-            }
-            if ($r['message'] === null && preg_match('/(Cannot connect to license server[^(]*|lmgrd is not running[^(]*|License server machine is down[^(]*|Cannot find license file[^(]*|Error getting status:[^(]*)/i', $line, $m)) {
-                $r['message'] = rtrim(trim($m[1]), ' .:') . '.';
-            }
-            continue;
-        }
-        // "MATLAB" v41, vendor: MLM, expiry: 31-dec-2026
-        if (preg_match('/^\s+"([^"]+)"\s+v(\S+?),\s+vendor:\s+([^,\s]+)(?:,\s+expiry:\s*(\S+))?/i', $line, $m)) {
-            $f = isset($r['features'][$m[1]]) ? $m[1] : $feature;
-            $r['features'][$f][0] = $m[3];
-            $r['features'][$f][1] = $m[2];
-            $r['features'][$f][5] = flexlm_parse_expiry($m[4] ?? '');
-            continue;
-        }
-        if (preg_match('/^\s+(\d+)\s+RESERVATIONs?\s+for\b/i', $line, $m)) {
-            $r['features'][$feature][4] += (int) $m[1];
-            continue;
-        }
-        // jsmith pc01 pc01 (v41) (licsrv/27000 101), start Wed 11/18 9:15, 2 licenses
-        if (preg_match('/^\s+(\S+)\s+(\S+)\s+(.*?)\s*(?:\(v([^)]*)\)\s+)?\(([^)]*)\),\s+start\s+(\w{3}\s+\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})(?:,\s+(\d+)\s+licen[sc]es?)?/i', $line, $m)) {
-            if (stripos($line, 'queued') !== false) continue;
-            $r['checkouts'][] = [$feature, $m[1], $m[2], $m[3] !== '' ? $m[3] : null, $m[4] !== '' ? $m[4] : null,
-                                 isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 1, preg_replace('/\s+/', ' ', $m[6])];
-        }
-    }
-    if (!$r['up'] && $r['message'] === null) {
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '' || stripos($line, 'copyright') !== false || stripos($line, 'Flexible License Manager status') !== false
-                || stripos($line, 'License server status') === 0 || stripos($line, 'License file(s)') === 0) continue;
-            $r['message'] = mb_substr($line, 0, 300);
-            break;
-        }
-        $r['message'] = $r['message'] ?? 'No answer from the license server.';
-    }
-    return $r;
-}
-
-/** "31-dec-2026" -> "2026-12-31"; permanent licences (year 0, "permanent") -> null. */
-function flexlm_parse_expiry(string $s): ?string {
-    if (!preg_match('/^(\d{1,2})-([a-z]{3})-(\d{1,4})$/i', trim($s), $m) || (int) $m[3] < 1970 || (int) $m[3] > 9000) return null;
-    $ts = strtotime("{$m[1]} {$m[2]} {$m[3]}");
-    return $ts ? date('Y-m-d', $ts) : null;
-}
-
-/** lmstat's start time ("Wed 11/18 9:15", no year) as ms: this year, or last year if that's in the future. */
-function flexlm_start_ms(string $start, int $nowMs): ?int {
-    if (!preg_match('/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/', $start, $m)) return null;
-    $year = (int) date('Y', intdiv($nowMs, 1000));
-    $ts = mktime((int) $m[3], (int) $m[4], 0, (int) $m[1], (int) $m[2], $year);
-    if ($ts > intdiv($nowMs, 1000) + 86400) $ts = mktime((int) $m[3], (int) $m[4], 0, (int) $m[1], (int) $m[2], $year - 1);
-    return $ts ? $ts * 1000 : null;
-}
-
-// ---------------------------------------------------------------- recording
-
-/** Server status from a parse result: [status, message]. */
-function flexlm_judge(array $srv, array $p, int $nowMs): array {
-    if (!$p['up']) return ['down', $p['message']];
-    $warn = [];
-    $downServers = array_filter($p['servers'], fn($s) => !$s[1]);
-    if ($downServers) $warn[] = 'license server ' . implode(', ', array_column($downServers, 0)) . ' is down';
-    $downVendors = array_filter($p['vendors'], fn($v) => !$v[1]);
-    if ($downVendors && count($downVendors) === count($p['vendors'])) {
-        return ['down', 'Vendor daemon ' . implode(', ', array_column($downVendors, 0)) . ' is down.'];
-    }
-    if ($downVendors) $warn[] = 'vendor daemon ' . implode(', ', array_column($downVendors, 0)) . ' is down';
-    $pct = (int) $srv['full_pct'];
-    $full = [];
-    if ($pct > 0) {
-        foreach ($p['features'] as $name => $f) {
-            if ($f[2] > 0 && $f[3] * 100 >= $f[2] * $pct) $full[] = $name . ($f[3] >= $f[2] ? " (all {$f[2]} in use)" : " ({$f[3]} of {$f[2]} in use)");
-        }
-    }
-    if ($full) $warn[] = implode(', ', array_slice($full, 0, 5)) . (count($full) > 5 ? ' and ' . (count($full) - 5) . ' more' : '');
-    $days = (int) $srv['expiry_warn_days'];
-    if ($days > 0) {
-        $soon = [];
-        $limit = date('Y-m-d', intdiv($nowMs, 1000) + $days * 86400);
-        foreach ($p['features'] as $name => $f) {
-            if ($f[5] !== null && $f[5] <= $limit) $soon[$f[5]][] = $name;
-        }
-        ksort($soon);
-        foreach (array_slice($soon, 0, 2, true) as $date => $names) {
-            $warn[] = (count($names) === 1 ? $names[0] : count($names) . ' features') . ($date < date('Y-m-d', intdiv($nowMs, 1000)) ? ' expired ' : ' expire' . (count($names) === 1 ? 's ' : ' ')) . $date;
-        }
-    }
-    return $warn ? ['warn', ucfirst(implode('; ', $warn)) . '.'] : ['up', null];
-}
-
-/** Stores one check: status, features, usage points and checkouts. */
-function flexlm_record(array $srv, string $output, int $ms, bool $timedOut, ?int $nowMs = null): void {
-    $pdo = db();
-    $now = $nowMs ?? now_ms();
-    $id = (int) $srv['id'];
-    $p = flexlm_parse($output, $now);
-    if ($timedOut && !$p['up']) $p['message'] = 'No answer within ' . FLEXLM_TIMEOUT_SEC . ' seconds.';
-    [$status, $msg] = flexlm_judge($srv, $p, $now);
-    $fails = $status === 'down' ? (int) $srv['fail_count'] + 1 : 0;
-    if ($status === 'down' && $fails < FLEXLM_DOWN_AFTER && !in_array($srv['status'], ['down', 'pending', 'unknown'], true)) {
-        $status = $srv['status'];   // one failure: keep the old status until it's confirmed
-    }
-    $pdo->prepare('UPDATE flexlm_servers SET status = ?, message = ?, last_check_at = ?, last_ms = ?, fail_count = ?, check_requested = 0,
-                   changed_at = IF(status <> ?, ?, COALESCE(changed_at, ?)), last_output = ?,
-                   vendors = COALESCE(?, vendors), lmgrd_version = COALESCE(?, lmgrd_version) WHERE id = ?')
-        ->execute([$status, $msg !== null ? mb_substr($msg, 0, 500) : null, $now, $ms, $fails, $status, $now, $now, $output,
-                   $p['up'] ? json_encode(array_map(fn($v) => ['name' => $v[0], 'up' => $v[1], 'version' => $v[2]], $p['vendors'])) : null,
-                   $p['lmgrd'], $id]);
-    if (!$p['up']) return;   // keep the last known features and checkouts
-
-    $pdo->beginTransaction();
-    try {
-        $names = array_keys($p['features']);
-        if ($names) {
-            $pdo->prepare('DELETE FROM flexlm_features WHERE server_id = ? AND feature NOT IN (' . implode(',', array_fill(0, count($names), '?')) . ')')
-                ->execute(array_merge([$id], array_map('strval', $names)));
-        } else {
-            $pdo->prepare('DELETE FROM flexlm_features WHERE server_id = ?')->execute([$id]);
-        }
-        $feat = $pdo->prepare('INSERT INTO flexlm_features (server_id, feature, vendor, version, total, used, reserved, expires, updated_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE vendor = VALUES(vendor), version = VALUES(version),
-                               total = VALUES(total), used = VALUES(used), reserved = VALUES(reserved), expires = VALUES(expires), updated_at = VALUES(updated_at)');
-        $usage = $pdo->prepare('INSERT IGNORE INTO flexlm_usage (server_id, feature, ts, used, total) VALUES (?, ?, ?, ?, ?)');
-        $hourly = $pdo->prepare('INSERT INTO flexlm_usage_hourly (server_id, feature, hour, peak, total) VALUES (?, ?, ?, ?, ?)
-                                 ON DUPLICATE KEY UPDATE peak = GREATEST(peak, VALUES(peak)), total = GREATEST(total, VALUES(total))');
-        $hour = intdiv($now, 3600000) * 3600000;
-        foreach ($p['features'] as $name => [$vendor, $version, $total, $used, $reserved, $expires]) {
-            $name = (string) $name;
-            $feat->execute([$id, $name, $vendor, $version, $total, $used, $reserved, $expires, $now]);
-            if ($total > 0) {
-                $usage->execute([$id, $name, $now, $used, $total]);
-                $hourly->execute([$id, $name, $hour, $used, $total]);
-            }
-        }
-
-        // Checkouts: carry on the ones seen before, start new ones, end the ones that are gone.
-        $open = [];
-        $st = $pdo->prepare('SELECT id, feature, username, host, start_text FROM flexlm_checkouts WHERE server_id = ? AND ended_at IS NULL');
-        $st->execute([$id]);
-        foreach ($st as $c) $open["{$c['feature']}|{$c['username']}|{$c['host']}|{$c['start_text']}"] = (int) $c['id'];
-        $seen = $pdo->prepare('UPDATE flexlm_checkouts SET last_seen = ?, licenses = ?, display = ?, version = ? WHERE id = ?');
-        $add = $pdo->prepare('INSERT INTO flexlm_checkouts (server_id, feature, username, host, display, version, licenses, start_text, started_at, last_seen)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $done = [];
-        foreach ($p['checkouts'] as [$f, $user, $host, $display, $version, $count, $start]) {
-            $f = (string) $f;
-            $user = mb_substr($user, 0, 120);
-            $host = mb_substr($host, 0, 190);
-            $key = "$f|$user|$host|$start";
-            if (isset($done[$key])) continue;   // the same line twice in one output counts once
-            $done[$key] = true;
-            if (isset($open[$key])) {
-                $seen->execute([$now, $count, $display !== null ? mb_substr($display, 0, 190) : null, $version, $open[$key]]);
-                unset($open[$key]);
-            } else {
-                $started = flexlm_start_ms($start, $now);
-                $add->execute([$id, $f, $user, $host, $display !== null ? mb_substr($display, 0, 190) : null, $version !== null ? mb_substr($version, 0, 40) : null,
-                               $count, $start, $started !== null && $started <= $now ? $started : $now, $now]);
-            }
-        }
-        if ($open) {
-            $pdo->query('UPDATE flexlm_checkouts SET ended_at = last_seen WHERE id IN (' . implode(',', array_map('intval', $open)) . ')');
-        }
-        $pdo->commit();
-    } catch (Throwable $e) {
-        $pdo->rollBack();
-        throw $e;
-    }
-}
-
-/** Marks servers unknown when lmutil can't run (nothing else changes). */
-function flexlm_record_unrunnable(array $servers, string $problem): void {
-    $now = now_ms();
-    $st = db()->prepare("UPDATE flexlm_servers SET status = 'unknown', message = ?, last_check_at = ?, check_requested = 0,
-                         changed_at = IF(status <> 'unknown', ?, changed_at) WHERE id = ?");
-    foreach ($servers as $s) $st->execute([$problem, $now, $now, $s['id']]);
-}
-
-/** Checks the given servers (rows from flexlm_servers) now. */
-function flexlm_check(array $servers): void {
-    if (!$servers) return;
-    [$prefix, $problem] = flexlm_lmutil_command();
-    if ($prefix === null) { flexlm_record_unrunnable($servers, $problem); return; }
-    $targets = [];
-    foreach ($servers as $s) $targets[(int) $s['id']] = $s['target'];
-    $results = flexlm_lmstat_many($targets);
-    foreach ($servers as $s) {
-        [$out, $ms, $timedOut] = $results[(int) $s['id']] ?? ['', 0, false];
-        // The loader or lmutil itself failed to start (missing libraries).
-        if (preg_match('/(error while loading shared libraries|required file not found|cannot execute binary file|Exec format error)/i', $out)) {
-            flexlm_record_unrunnable([$s], 'lmutil could not start: ' . mb_substr(trim(strtok($out, "\n")), 0, 300));
-            continue;
-        }
-        flexlm_record($s, $out, $ms, $timedOut);
-    }
-}
-
-/** Cron: checks the servers that are due or were asked for, and trims old data. One process at a time. */
-function flexlm_run_due(): void {
-    $pdo = db();
-    if (!(int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'flexlm_servers'")->fetchColumn()) return;
-    if (!(int) $pdo->query("SELECT GET_LOCK('webmonitor_flexlm', 0)")->fetchColumn()) return;
-    try {
-        $now = now_ms();
-        // 5 s of slack so a 60 s check run by a once-a-minute timer isn't skipped every other run.
-        $st = $pdo->prepare('SELECT * FROM flexlm_servers WHERE enabled = 1
-                             AND (check_requested = 1 OR last_check_at IS NULL OR last_check_at + interval_sec * 1000 - 5000 <= ?)');
-        $st->execute([$now]);
-        flexlm_check($st->fetchAll());
-        if (random_int(1, 30) === 1) {
-            $pdo->prepare('DELETE FROM flexlm_usage WHERE ts < ?')->execute([$now - FLEXLM_USAGE_KEEP_DAYS * 86400000]);
-            $pdo->prepare('DELETE FROM flexlm_usage_hourly WHERE hour < ?')->execute([$now - FLEXLM_HOURLY_KEEP_DAYS * 86400000]);
-            $pdo->prepare('DELETE FROM flexlm_checkouts WHERE ended_at IS NOT NULL AND ended_at < ?')->execute([$now - FLEXLM_CHECKOUTS_KEEP_DAYS * 86400000]);
-        }
-    } finally {
-        $pdo->query("SELECT RELEASE_LOCK('webmonitor_flexlm')");
-    }
-}
-
-// ---------------------------------------------------------------- validation
-
-/** Cleans a create/update request. Returns [row, error]. */
-function flexlm_validate(array $in, ?array $existing = null): array {
-    $get = fn($k, $col, $d = null) => array_key_exists($k, $in) ? $in[$k] : ($existing[$col] ?? $d);
-    $target = preg_replace('/\s+/', '', (string) $get('target', 'target', ''));
-    $parts = $target === '' ? [] : explode(',', $target);
-    if (!$parts || count($parts) > 3) return [null, 'Enter the server as port@host, e.g. 27000@192.168.1.20 (or three of them, comma-separated, for a triad).'];
-    foreach ($parts as $part) {
-        if (!preg_match(FLEXLM_TARGET_PART_RE, $part, $m) || (isset($m[1]) && $m[1] !== '' && ((int) $m[1] < 1 || (int) $m[1] > 65535))) {
-            return [null, "\"$part\" isn't port@host. Use e.g. 27000@192.168.1.20 or 27000@licsrv."];
-        }
-    }
-    $name = trim((string) $get('name', 'name', ''));
-    if ($name === '') $name = $target;
-    $interval = (int) $get('interval', 'interval_sec', 300);
-    if (!in_array($interval, FLEXLM_INTERVALS, true)) $interval = 300;
-    $notes = trim((string) $get('notes', 'notes', ''));
-    return [[
-        'name' => mb_substr($name, 0, 120),
-        'target' => $target,
-        'interval_sec' => $interval,
-        'enabled' => (bool) $get('enabled', 'enabled', true),
-        'alert' => (bool) $get('alert', 'alert', true),
-        'down_after_min' => max(0, min(1440, (int) $get('downAfterMin', 'down_after_min', 10))),
-        'full_pct' => max(0, min(100, (int) $get('fullPct', 'full_pct', 100))),
-        'expiry_warn_days' => max(0, min(365, (int) $get('expiryWarnDays', 'expiry_warn_days', 30))),
-        'notes' => $notes !== '' ? mb_substr($notes, 0, 500) : null,
-    ], null];
-}
-
-// ---------------------------------------------------------------- reading
-
-/** JSON-ready server row with its features and current checkouts. */
-function flexlm_server_row(array $s, array $features, array $checkouts): array {
-    $used = $total = 0;
-    foreach ($features as $f) { $used += $f['used']; $total += $f['total']; }
-    $expiries = array_filter(array_column($features, 'expires'));
-    return [
-        'id' => (int) $s['id'],
-        'name' => $s['name'],
-        'target' => $s['target'],
-        'interval' => (int) $s['interval_sec'],
-        'enabled' => (bool) $s['enabled'],
-        'alert' => (bool) $s['alert'],
-        'downAfterMin' => (int) $s['down_after_min'],
-        'fullPct' => (int) $s['full_pct'],
-        'expiryWarnDays' => (int) $s['expiry_warn_days'],
-        'notes' => $s['notes'],
-        'status' => $s['enabled'] ? $s['status'] : 'paused',
-        'message' => $s['message'],
-        'vendors' => $s['vendors'] ? (json_decode($s['vendors'], true) ?: []) : [],
-        'lmgrdVersion' => $s['lmgrd_version'],
-        'lastCheck' => $s['last_check_at'] !== null ? (int) $s['last_check_at'] : null,
-        'lastMs' => $s['last_ms'] !== null ? (int) $s['last_ms'] : null,
-        'changedAt' => $s['changed_at'] !== null ? (int) $s['changed_at'] : null,
-        'checkRequested' => (bool) $s['check_requested'],
-        'used' => $used,
-        'total' => $total,
-        'earliestExpiry' => $expiries ? min($expiries) : null,
-        'features' => $features,
-        'checkouts' => $checkouts,
-    ];
-}
-
-/** Every server with its features and open checkouts. */
-function flexlm_list(): array {
-    $pdo = db();
-    $servers = $pdo->query('SELECT id, name, target, interval_sec, enabled, alert, down_after_min, full_pct, expiry_warn_days, notes, status, message,
-                            vendors, lmgrd_version, last_check_at, last_ms, changed_at, check_requested FROM flexlm_servers ORDER BY name')->fetchAll();
-    $features = $checkouts = [];
-    foreach ($pdo->query('SELECT * FROM flexlm_features ORDER BY feature') as $f) {
-        $features[(int) $f['server_id']][] = [
-            'name' => $f['feature'], 'vendor' => $f['vendor'], 'version' => $f['version'], 'total' => (int) $f['total'],
-            'used' => (int) $f['used'], 'reserved' => (int) $f['reserved'], 'expires' => $f['expires'],
-        ];
-    }
-    foreach ($pdo->query('SELECT * FROM flexlm_checkouts WHERE ended_at IS NULL ORDER BY started_at') as $c) {
-        $checkouts[(int) $c['server_id']][] = flexlm_checkout_row($c);
-    }
-    return array_map(fn($s) => flexlm_server_row($s, $features[(int) $s['id']] ?? [], $checkouts[(int) $s['id']] ?? []), $servers);
-}
-
-function flexlm_checkout_row(array $c): array {
-    return [
-        'id' => (int) $c['id'],
-        'serverId' => (int) $c['server_id'],
-        'serverName' => $c['server_name'] ?? null,
-        'feature' => $c['feature'],
-        'user' => $c['username'],
-        'host' => $c['host'],
-        'display' => $c['display'],
-        'version' => $c['version'],
-        'licenses' => (int) $c['licenses'],
-        'startedAt' => (int) $c['started_at'],
-        'lastSeen' => (int) $c['last_seen'],
-        'endedAt' => $c['ended_at'] !== null ? (int) $c['ended_at'] : null,
-    ];
-}
-
-/** Checkout history and the heaviest users over the last $days days, filtered by user, host or feature. */
-function flexlm_history(int $days, string $q = '', ?int $serverId = null): array {
-    $pdo = db();
-    $since = now_ms() - $days * 86400000;
-    $where = 'c.last_seen >= ?';
-    $args = [$since];
-    if ($serverId) { $where .= ' AND c.server_id = ?'; $args[] = $serverId; }
-    if ($q !== '') {
-        $where .= ' AND (c.username LIKE ? OR c.host LIKE ? OR c.feature LIKE ?)';
-        $like = '%' . addcslashes($q, '%_\\') . '%';
-        array_push($args, $like, $like, $like);
-    }
-    $st = $pdo->prepare("SELECT c.*, s.name AS server_name FROM flexlm_checkouts c JOIN flexlm_servers s ON s.id = c.server_id
-                         WHERE $where ORDER BY c.last_seen DESC, c.id DESC LIMIT 300");
-    $st->execute($args);
-    $rows = array_map('flexlm_checkout_row', $st->fetchAll());
-    $st = $pdo->prepare("SELECT c.username, COUNT(*) AS sessions, COUNT(DISTINCT c.feature) AS features,
-                                SUM(GREATEST(c.last_seen - GREATEST(c.started_at, ?), 0)) AS ms, MAX(c.last_seen) AS last_seen
-                         FROM flexlm_checkouts c WHERE $where GROUP BY c.username ORDER BY ms DESC LIMIT 15");
-    $st->execute(array_merge([$since], $args));
-    $top = array_map(fn($r) => ['user' => $r['username'], 'sessions' => (int) $r['sessions'], 'features' => (int) $r['features'],
-                                'hours' => round((int) $r['ms'] / 3600000, 1), 'lastSeen' => (int) $r['last_seen']], $st->fetchAll());
-    return ['days' => $days, 'checkouts' => $rows, 'topUsers' => $top];
-}
-
-/**
- * Licences in use per feature for one server: every check for up to 7 days,
- * hourly peaks beyond that. Returns {features: {name: [[ts, used]...]}, totals: {name: total}}.
- */
-function flexlm_usage_series(int $serverId, int $days): array {
-    $pdo = db();
-    $since = now_ms() - $days * 86400000;
-    if ($days <= 7) {
-        $st = $pdo->prepare('SELECT feature, ts, used, total FROM flexlm_usage WHERE server_id = ? AND ts >= ? ORDER BY ts');
-    } else {
-        $st = $pdo->prepare('SELECT feature, hour AS ts, peak AS used, total FROM flexlm_usage_hourly WHERE server_id = ? AND hour >= ? ORDER BY hour');
-    }
-    $st->execute([$serverId, $since]);
-    $series = $totals = [];
-    foreach ($st as $r) {
-        $series[$r['feature']][] = [(int) $r['ts'], (int) $r['used']];
-        $totals[$r['feature']] = max($totals[$r['feature']] ?? 0, (int) $r['total']);
-    }
-    // Peak per feature over the range, for the table under the chart.
-    $peaks = [];
-    foreach ($series as $f => $pts) $peaks[$f] = max(array_column($pts, 1));
-    return ['days' => $days, 'hourly' => $days > 7, 'features' => $series, 'totals' => $totals, 'peaks' => $peaks];
-}
-
-// ---------------------------------------------------------------- alerts
-
-/**
- * Problems for includes/alerts.php: server down for down_after_min minutes
- * (critical), a feature at or above full_pct % in use (warning), features
- * expiring within expiry_warn_days (one alert per server and date; critical
- * once expired). Subjects start with "flm:ID"; alerts have no host.
- */
-function flexlm_problems(callable $add, array &$frozenHosts): void {
-    $pdo = db();
-    if (!(int) $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'flexlm_servers'")->fetchColumn()) return;
-    $now = now_ms();
-    $today = date('Y-m-d', intdiv($now, 1000));
-    $openSubjects = [];
-    foreach ($pdo->query("SELECT type, subject FROM alerts WHERE resolved_at IS NULL AND type LIKE 'flexlm\\_%'") as $a) {
-        $openSubjects[(int) explode(':', substr($a['subject'], 4))[0]][] = $a['type'] . '|' . $a['subject'];
-    }
-    $features = [];
-    foreach ($pdo->query('SELECT server_id, feature, total, used, expires FROM flexlm_features') as $f) $features[(int) $f['server_id']][] = $f;
-
-    foreach ($pdo->query('SELECT * FROM flexlm_servers WHERE enabled = 1 AND alert = 1') as $s) {
-        $id = (int) $s['id'];
-        $label = "{$s['name']} ({$s['target']})";
-        $stale = $s['last_check_at'] === null || $now - (int) $s['last_check_at'] > max(3 * (int) $s['interval_sec'], 900) * 1000;
-        $freeze = function (?string $onlyType = null) use ($id, $openSubjects, &$frozenHosts) {
-            foreach ($openSubjects[$id] ?? [] as $key) {
-                if ($onlyType === null || str_starts_with($key, $onlyType . '|')) $frozenHosts[0][$key] = true;
-            }
-        };
-        if ($stale || in_array($s['status'], ['unknown', 'pending'], true)) { $freeze(); continue; }   // no fresh data: leave as is
-
-        if ($s['status'] === 'down') {
-            $downMs = $now - (int) ($s['changed_at'] ?? $now);
-            if ($downMs >= (int) $s['down_after_min'] * 60000) {
-                $add(null, 'flexlm_down', "flm:$id", 'critical', "Licence server $label is down since " . date('H:i', intdiv((int) $s['changed_at'], 1000)) . ': ' . ($s['message'] ?? ''));
-            } else {
-                $freeze('flexlm_down');   // not down long enough yet: don't resolve an open one either
-            }
-            // Features are from before it went down: keep full/expiry alerts as they are.
-            $freeze('flexlm_full');
-            $freeze('flexlm_expiry');
-            continue;
-        }
-
-        $pct = (int) $s['full_pct'];
-        $byDate = [];
-        foreach ($features[$id] ?? [] as $f) {
-            $total = (int) $f['total'];
-            $used = (int) $f['used'];
-            if ($pct > 0 && $total > 0 && $used * 100 >= $total * $pct) {
-                $add(null, 'flexlm_full', "flm:$id:{$f['feature']}", 'warning', $used >= $total
-                    ? "{$s['name']}: all $total {$f['feature']} licences are in use"
-                    : "{$s['name']}: $used of $total {$f['feature']} licences are in use (" . round($used * 100 / $total) . '%)');
-            }
-            if ((int) $s['expiry_warn_days'] > 0 && $f['expires'] !== null
-                && $f['expires'] <= date('Y-m-d', intdiv($now, 1000) + (int) $s['expiry_warn_days'] * 86400)) {
-                $byDate[$f['expires']][] = $f['feature'];
-            }
-        }
-        foreach ($byDate as $date => $names) {
-            $days = (int) round((strtotime($date) - strtotime($today)) / 86400);
-            $list = implode(', ', array_slice($names, 0, 8)) . (count($names) > 8 ? ' and ' . (count($names) - 8) . ' more' : '');
-            $what = count($names) === 1 ? "the $list licence" : count($names) . " licences ($list)";
-            $add(null, 'flexlm_expiry', "flm:$id:$date", $days < 0 ? 'critical' : 'warning', $days < 0
-                ? "{$s['name']}: $what expired on $date"
-                : "{$s['name']}: $what expire" . (count($names) === 1 ? 's' : '') . ($days === 0 ? ' today' : " in $days day" . ($days === 1 ? '' : 's')) . ", on $date");
-        }
-    }
-}
-
-/** Whether a FlexLM alert's server still exists with alerts on (else it's closed without a "resolved" message). */
-function flexlm_alert_live(array $a): bool {
-    $st = db()->prepare('SELECT 1 FROM flexlm_servers WHERE id = ? AND enabled = 1 AND alert = 1');
-    $st->execute([(int) explode(':', substr((string) $a['subject'], 4))[0]]);
-    return (bool) $st->fetchColumn();
-}
-
-/** Name of the server a FlexLM alert is about. */
-function flexlm_alert_name(array $a): string {
-    $st = db()->prepare('SELECT name FROM flexlm_servers WHERE id = ?');
-    $st->execute([(int) explode(':', substr((string) $a['subject'], 4))[0]]);
-    return $st->fetchColumn() ?: 'licence server';
 }
 WEBMON_FILE_EOF
 
@@ -25983,6 +23492,149 @@ function network_topology(): array {
 }
 WEBMON_FILE_EOF
 
+mkdir -p "$(dirname "$APP_DIR/includes/pro.php")"
+cat > "$APP_DIR/includes/pro.php" <<'WEBMON_FILE_EOF'
+<?php
+require_once __DIR__ . '/db.php';
+
+/**
+ * WebMonitor Pro: optional features that live in pro/ (not part of the
+ * open-source release). This file is the only link between the core and
+ * pro/:
+ *
+ *   pro_available()      pro/ is installed
+ *   pro_unlocked()       ... and unlocked (Settings -> WebMonitor Pro)
+ *   pro_feature($name)   ... and that feature is switched on
+ *
+ * Pro modules are loaded only for features that are on. Everything the core
+ * calls into Pro has a do-nothing stand-in below, so the core runs the same
+ * with pro/ missing, locked or with a feature off.
+ */
+
+const PRO_DIR = __DIR__ . '/../pro';
+const PRO_FEATURES = [
+    'changes' => ['label' => 'Change management & audit log', 'default' => true,
+                  'desc' => 'Change records for every update, change emails, optional approval, and a tamper-evident audit log.'],
+    'remote' => ['label' => 'Remote access', 'default' => false,
+                 'desc' => 'Remote buttons on host cards: Remote Desktop, SSH, VNC and the device\'s web page.'],
+    'vulns' => ['label' => 'Vulnerability scanning', 'default' => true,
+                'desc' => 'The Security tab: scheduled nmap / CVE scans and a security report.'],
+    'flexlm' => ['label' => 'Licence-server monitoring', 'default' => true,
+                 'desc' => 'The Licences tab: FlexLM servers, seats in use, expiry and alerts.'],
+    'group_schedules' => ['label' => 'Update schedules by group', 'default' => true,
+                          'desc' => 'Target update schedules at card groups.'],
+];
+
+function pro_available(): bool {
+    static $a = null;
+    return $a ??= is_file(PRO_DIR . '/pro.php');
+}
+
+/** Random id for this installation, made once; unlocking is tied to it. */
+function pro_install_id(): string {
+    $id = db()->query("SELECT v FROM settings WHERE k = 'install_id'")->fetchColumn();
+    if (!$id) {
+        $id = bin2hex(random_bytes(16));
+        db()->prepare("INSERT IGNORE INTO settings (k, v) VALUES ('install_id', ?)")->execute([$id]);
+        $id = db()->query("SELECT v FROM settings WHERE k = 'install_id'")->fetchColumn();
+    }
+    return (string) $id;
+}
+
+function pro_state(): array {
+    $raw = db()->query("SELECT v FROM settings WHERE k = 'pro'")->fetchColumn();
+    return $raw ? (json_decode($raw, true) ?: []) : [];
+}
+
+function pro_unlocked(): bool {
+    static $u = null;
+    if ($u !== null) return $u;
+    if (!pro_available()) return $u = false;
+    require_once PRO_DIR . '/pro.php';
+    $state = pro_state();
+    return $u = isset($state['token']) && function_exists('pro_check_token') && pro_check_token((string) $state['token']);
+}
+
+/** Feature switches (Settings -> WebMonitor Pro), defaults filled in. */
+function pro_feature_settings(): array {
+    $saved = pro_state()['features'] ?? [];
+    $out = [];
+    foreach (PRO_FEATURES as $k => $f) $out[$k] = array_key_exists($k, $saved) ? (bool) $saved[$k] : $f['default'];
+    return $out;
+}
+
+function pro_feature(string $name): bool {
+    static $cache = [];
+    return $cache[$name] ??= pro_unlocked() && (pro_feature_settings()[$name] ?? false);
+}
+
+/** For the page (meta tag) and api/pro.php. */
+function pro_status(): array {
+    $state = pro_state();
+    $unlocked = pro_unlocked();
+    return [
+        'available' => pro_available(),
+        'unlocked' => $unlocked,
+        'passwordSet' => pro_available() && function_exists('pro_password_set') && pro_password_set(),
+        'unlockedBy' => $unlocked ? ($state['by'] ?? null) : null,
+        'unlockedAt' => $unlocked ? ($state['at'] ?? null) : null,
+        'features' => array_map(fn($on) => $on && $unlocked, pro_feature_settings()),
+        'catalog' => PRO_FEATURES,
+    ];
+}
+
+/** Outputs a Pro page fragment (pro/views/NAME.php) if its feature is on. */
+function pro_view(string $name, string $feature): void {
+    if (pro_feature($feature) && is_file(PRO_DIR . "/views/$name.php")) include PRO_DIR . "/views/$name.php";
+}
+
+/** For api/*.php stand-ins: runs pro/api/NAME.php, or answers 404 when the feature is off. */
+function pro_api(string $name, string $feature): void {
+    if (!pro_feature($feature) || !is_file(PRO_DIR . "/api/$name.php")) {
+        http_response_code(404);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'This is a WebMonitor Pro feature' . (pro_unlocked() ? ' that is switched off (Settings → WebMonitor Pro).' : '.')]);
+        exit;
+    }
+    require PRO_DIR . "/api/$name.php";
+}
+
+// ---------------------------------------------------------------- load
+
+if (pro_feature('changes')) {
+    require_once PRO_DIR . '/includes/audit.php';
+    require_once PRO_DIR . '/includes/changes.php';
+}
+if (pro_feature('flexlm')) require_once PRO_DIR . '/includes/flexlm.php';
+if (pro_feature('remote')) require_once PRO_DIR . '/includes/remote.php';
+
+// ---------------------------------------------------------------- stand-ins
+
+if (!function_exists('audit_log')) {
+    function audit_actor(?array $user = null, bool $set = false): ?array { return null; }
+    function audit_log(string $action, string $summary, ?string $target = null, ?array $details = null,
+                       string $outcome = 'ok', ?array $actor = null, bool $system = false): void {}
+    function audit_api_request(array $user): void {}
+}
+if (!function_exists('change_process')) {
+    define('CHANGE_JOB_TYPES', []);   // no change records: schedules run as they always did
+    function change_record_manual(array $res, string $type, array $params, ?array $user, string $title,
+                                  ?int $scheduleId = null, ?int $runId = null): ?int { return null; }
+    function change_gate(array $sched, DateTimeImmutable $occ): array { return ['run' => true, 'change' => null]; }
+    function change_started(array $c, int $runId, array $res): void {}
+    function change_process(): void {}
+}
+if (!function_exists('flexlm_run_due')) {
+    function flexlm_run_due(): void {}
+    function flexlm_problems(callable $add, array &$frozenHosts): void {}
+    function flexlm_alert_live(array $a): bool { return false; }   // open licence alerts resolve
+    function flexlm_alert_name(array $a): string { return 'Licence server'; }
+}
+if (!function_exists('pro_host_extras')) {
+    function pro_host_extras(array $hosts): array { return []; }
+}
+WEBMON_FILE_EOF
+
 mkdir -p "$(dirname "$APP_DIR/includes/scanner.php")"
 cat > "$APP_DIR/includes/scanner.php" <<'WEBMON_FILE_EOF'
 <?php
@@ -26219,7 +23871,7 @@ cat > "$APP_DIR/includes/schedules.php" <<'WEBMON_FILE_EOF'
 <?php
 require_once __DIR__ . '/jobs.php';
 require_once __DIR__ . '/notify.php';
-require_once __DIR__ . '/changes.php';
+require_once __DIR__ . '/pro.php';   // change records (WebMonitor Pro) or stand-ins
 
 /**
  * Update windows: recurring jobs (e.g. security updates every Sunday at
@@ -26283,6 +23935,7 @@ function schedule_host_ids(array $sched): array {
         return array_values(array_filter(array_map('intval', json_decode($sched['host_ids'], true) ?: [])));
     }
     if ($sched['targets'] === 'groups') {
+        if (!pro_feature('group_schedules')) return [];   // WebMonitor Pro
         // Cards in the groups right now that have an agent (no agent = nothing to update).
         $agents = agent_summaries();
         $ids = array_values(array_filter(hosts_in_groups(json_decode((string) ($sched['group_ids'] ?? ''), true) ?: []),
@@ -26346,6 +23999,10 @@ function schedule_fields(array $in): array {
     if ($groupIds) {
         $known = array_map('intval', db()->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN));
         $groupIds = array_values(array_intersect($groupIds, $known));
+    }
+    // Without Pro an existing group schedule can still be turned off or deleted.
+    if ($targets === 'groups' && !pro_feature('group_schedules') && !(array_key_exists('enabled', $in) && !$in['enabled'])) {
+        throw new InvalidArgumentException('Targeting groups is a WebMonitor Pro feature.');
     }
     if ($targets === 'groups' && !$groupIds) throw new InvalidArgumentException('Pick at least one group.');
     return [
@@ -27669,585 +25326,6 @@ function build_topology(): array {
 }
 WEBMON_FILE_EOF
 
-mkdir -p "$(dirname "$APP_DIR/includes/vulnscan.php")"
-cat > "$APP_DIR/includes/vulnscan.php" <<'WEBMON_FILE_EOF'
-<?php
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/agents.php';    // antivirus_status(), now_ms()
-require_once __DIR__ . '/scanner.php';   // snmp_probe()
-
-/**
- * Vulnerability scanning (Security tab), OpenVAS-style but built in:
- *   - nmap (TCP connect, no root) finds open services and their versions, with
- *     a few NSE scripts for TLS, certificates, SMB, FTP, VNC, Redis, MongoDB, Docker;
- *   - built-in checks turn that into findings (cleartext logins, SMBv1, old TLS,
- *     expired certificates, services open without a password, SNMP "public");
- *   - devices without an agent: known CVEs for each service version (NVD);
- *   - hosts with an agent: pending security updates with their CVEs (OSV), the
- *     antivirus state and pending reboots, like OpenVAS's logged-in scans.
- * NVD and OSV get product names and versions only (never addresses), cached.
- * Runs in its own service (cli/vulnscan.php) so long scans never delay checks.
- * Severity from CVSS: critical 9+, high 7+, medium 4+, low >0, info 0.
- */
-
-const VULN_SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
-const VULN_NMAP_BATCH = 6;                 // hosts per nmap run (nmap scans them in parallel)
-const VULN_NMAP_TIMEOUT_SEC = 1800;
-const VULN_SCRIPTS = 'ssl-cert,ssl-enum-ciphers,smb-protocols,ftp-anon,vnc-info,redis-info,mongodb-info,docker-version,http-title';
-const VULN_NVD_TTL_SEC = 7 * 86400;
-const VULN_OSV_TTL_SEC = 86400;
-const VULN_OSV_VULN_TTL_SEC = 30 * 86400;
-const VULN_MAX_CVES_LISTED = 15;
-const VULN_TARGET_SEEN_DAYS = 7;           // "all devices": cards seen in this many days
-// Versions nmap reports when it can't tell versions apart (every Samba 4.x answers as "4.6.2"): no CVE lookup.
-const NMAP_PLACEHOLDER_VERSIONS = ['cpe:2.3:a:samba:samba:4.6.2'];
-
-function cvss_severity(?float $score): string {
-    if ($score === null) return 'info';
-    return $score >= 9 ? 'critical' : ($score >= 7 ? 'high' : ($score >= 4 ? 'medium' : ($score > 0 ? 'low' : 'info')));
-}
-
-/** CVSS v3.x base score from a vector ("CVSS:3.1/AV:N/AC:L/..."), or null. */
-function cvss3_base_score(string $vector): ?float {
-    if (!preg_match('#^CVSS:3\.[01]/#', $vector)) return null;
-    $m = [];
-    foreach (explode('/', substr($vector, 9)) as $part) { [$k, $v] = array_pad(explode(':', $part, 2), 2, ''); $m[$k] = $v; }
-    $w = ['AV' => ['N' => .85, 'A' => .62, 'L' => .55, 'P' => .2], 'AC' => ['L' => .77, 'H' => .44], 'UI' => ['N' => .85, 'R' => .62],
-          'CIA' => ['H' => .56, 'L' => .22, 'N' => 0]];
-    foreach (['AV', 'AC', 'PR', 'UI', 'S', 'C', 'I', 'A'] as $k) if (!isset($m[$k])) return null;
-    $changed = $m['S'] === 'C';
-    $pr = ['N' => .85, 'L' => $changed ? .68 : .62, 'H' => $changed ? .5 : .27][$m['PR']] ?? null;
-    $av = $w['AV'][$m['AV']] ?? null; $ac = $w['AC'][$m['AC']] ?? null; $ui = $w['UI'][$m['UI']] ?? null;
-    $c = $w['CIA'][$m['C']] ?? null; $i = $w['CIA'][$m['I']] ?? null; $a = $w['CIA'][$m['A']] ?? null;
-    if (in_array(null, [$pr, $av, $ac, $ui, $c, $i, $a], true)) return null;
-    $iss = 1 - (1 - $c) * (1 - $i) * (1 - $a);
-    $impact = $changed ? 7.52 * ($iss - 0.029) - 3.25 * (($iss - 0.02) ** 15) : 6.42 * $iss;
-    if ($impact <= 0) return 0.0;
-    $expl = 8.22 * $av * $ac * $pr * $ui;
-    $base = $changed ? min(1.08 * ($impact + $expl), 10) : min($impact + $expl, 10);
-    $int = (int) round($base * 100000);   // CVSS 3.1 "Roundup"
-    return $int % 10000 === 0 ? $int / 100000.0 : (floor($int / 10000) + 1) / 10.0;
-}
-
-// ---- queue ----
-
-/** Queues a scan; returns its id (an already queued/running scan of the same scope is reused). */
-function vuln_queue_scan(string $scope, ?int $userId): int {
-    $pdo = db();
-    $q = $pdo->prepare("SELECT id FROM vuln_scans WHERE scope = ? AND status IN ('queued', 'running') LIMIT 1");
-    $q->execute([$scope]);
-    if ($id = $q->fetchColumn()) return (int) $id;
-    $pdo->prepare('INSERT INTO vuln_scans (scope, requested_by, created_at) VALUES (?, ?, ?)')->execute([$scope, $userId, now_ms()]);
-    return (int) $pdo->lastInsertId();
-}
-
-/** "all", "subnet:192.168.60.0/24" or "host:12" -> [ip => host_id]. */
-function vuln_targets(string $scope): array {
-    $pdo = db();
-    if (str_starts_with($scope, 'host:')) {
-        $q = $pdo->prepare('SELECT id, ip_address FROM hosts WHERE id = ?');
-        $q->execute([(int) substr($scope, 5)]);
-    } elseif (str_starts_with($scope, 'subnet:')) {
-        $q = $pdo->prepare('SELECT id, ip_address FROM hosts WHERE ip_address LIKE ? AND COALESCE(last_seen_at, 0) >= ?');
-        $q->execute([substr($scope, 7, -4) . '%', (time() - VULN_TARGET_SEEN_DAYS * 86400) * 1000]);
-    } else {
-        $q = $pdo->prepare('SELECT id, ip_address FROM hosts WHERE COALESCE(last_seen_at, 0) >= ?');
-        $q->execute([(time() - VULN_TARGET_SEEN_DAYS * 86400) * 1000]);
-    }
-    $out = [];
-    foreach ($q->fetchAll() as $r) {
-        if (filter_var($r['ip_address'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) $out[$r['ip_address']] ??= (int) $r['id'];
-    }
-    uksort($out, fn($a, $b) => ip2long($a) <=> ip2long($b));
-    return $out;
-}
-
-// ---- nmap ----
-
-function nmap_path(): ?string {
-    foreach (['/usr/bin/nmap', '/usr/local/bin/nmap'] as $p) if (is_executable($p)) return $p;
-    return null;
-}
-
-/** Runs nmap on a few addresses; returns parse_nmap_xml() of its output. */
-function nmap_scan(array $ips): array {
-    $nmap = nmap_path();
-    if (!$nmap) throw new RuntimeException('nmap is not installed (dnf install nmap)');
-    $cmd = array_merge([$nmap, '-sT', '-sV', '--version-light', '-Pn', '-T4', '--top-ports', '1000', '--max-retries', '2',
-        '--host-timeout', '15m', '--script-timeout', '60s', '--script', VULN_SCRIPTS, '-oX', '-'], array_values($ips));
-    $p = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-    if (!$p) throw new RuntimeException('could not start nmap');
-    stream_set_blocking($pipes[1], false);
-    stream_set_blocking($pipes[2], false);
-    $out = $err = '';
-    $deadline = time() + VULN_NMAP_TIMEOUT_SEC;
-    while (true) {
-        $r = [$pipes[1], $pipes[2]]; $w = $x = null;
-        if (@stream_select($r, $w, $x, 5) === false) break;
-        foreach ($r as $s) { $chunk = (string) fread($s, 65536); if ($s === $pipes[1]) $out .= $chunk; else $err .= $chunk; }
-        if (feof($pipes[1]) && feof($pipes[2])) break;
-        if (time() > $deadline) { proc_terminate($p); throw new RuntimeException('nmap took too long'); }
-    }
-    fclose($pipes[1]); fclose($pipes[2]);
-    $rc = proc_close($p);
-    if ($rc !== 0 && !str_contains($out, '</nmaprun>')) throw new RuntimeException('nmap failed: ' . mb_substr(trim($err), 0, 300));
-    return parse_nmap_xml($out);
-}
-
-/** An NSE <script>/<table> as nested arrays: keyed elems/tables by key, unkeyed ones as a list. */
-function nmap_script_data(SimpleXMLElement $node): array {
-    $data = [];
-    foreach ($node->children() as $child) {
-        $key = isset($child['key']) ? (string) $child['key'] : null;
-        $val = $child->getName() === 'table' ? nmap_script_data($child) : trim((string) $child);
-        if ($key === null) $data[] = $val; else $data[$key] = $val;
-    }
-    return $data;
-}
-
-/** nmap XML -> [ip => ['ports' => [...], 'hostscripts' => [id => {output, data}], 'os' => ?string]]. */
-function parse_nmap_xml(string $xml): array {
-    $x = @simplexml_load_string($xml);
-    if (!$x) throw new RuntimeException('nmap output was not valid XML');
-    $out = [];
-    foreach ($x->host as $h) {
-        $ip = null;
-        foreach ($h->address as $a) if ((string) $a['addrtype'] === 'ipv4') $ip = (string) $a['addr'];
-        if (!$ip) continue;
-        $ports = [];
-        $os = null;
-        foreach ($h->ports->port ?? [] as $p) {
-            if ((string) $p->state['state'] !== 'open') continue;
-            $svc = $p->service;
-            $scripts = [];
-            foreach ($p->script as $s) $scripts[(string) $s['id']] = ['output' => (string) $s['output'], 'data' => nmap_script_data($s)];
-            $cpes = [];
-            foreach ($svc->cpe ?? [] as $c) $cpes[] = (string) $c;
-            $ports[] = [
-                'port' => (int) $p['portid'], 'proto' => (string) $p['protocol'],
-                'name' => (string) ($svc['name'] ?? ''), 'product' => (string) ($svc['product'] ?? ''),
-                'version' => (string) ($svc['version'] ?? ''), 'extrainfo' => (string) ($svc['extrainfo'] ?? ''),
-                'tunnel' => (string) ($svc['tunnel'] ?? ''), 'cpes' => $cpes, 'scripts' => $scripts,
-            ];
-            if (!$os && !empty($svc['ostype'])) $os = (string) $svc['ostype'];
-        }
-        $hostscripts = [];
-        foreach ($h->hostscript->script ?? [] as $s) $hostscripts[(string) $s['id']] = ['output' => (string) $s['output'], 'data' => nmap_script_data($s)];
-        $out[$ip] = ['ports' => $ports, 'hostscripts' => $hostscripts, 'os' => $os];
-    }
-    return $out;
-}
-
-// ---- built-in checks ----
-
-/** A finding row (scan_id/ip added when stored). */
-function vuln_finding(string $check, float $cvss, string $title, string $detail, string $solution, ?array $port = null, array $refs = [], string $confidence = 'high'): array {
-    return ['check_id' => $check, 'cvss' => $cvss, 'severity' => cvss_severity($cvss), 'title' => $title, 'detail' => $detail,
-            'solution' => $solution, 'port' => $port['port'] ?? null,
-            'service' => $port ? (trim(($port['product'] ?: $port['name']) . ' ' . $port['version']) ?: null) : null,
-            'refs' => $refs, 'confidence' => $confidence];
-}
-
-/** Findings from what nmap saw on one host (pure; tested in deploy/test-vulnscan.php). */
-function builtin_checks(array $host, ?int $nowSec = null): array {
-    $now = $nowSec ?? time();
-    $f = [];
-    foreach ($host['ports'] as $p) {
-        $s = $p['scripts'];
-        $name = strtolower($p['name']);
-        if ($p['port'] === 23 || $name === 'telnet') {
-            $f[] = vuln_finding('telnet', 7.5, 'Telnet service accepts cleartext logins',
-                'Telnet sends user names and passwords unencrypted; anyone on the network path can read them.',
-                'Turn Telnet off and use SSH for remote administration.', $p);
-        }
-        if ($name === 'ftp') {
-            if (str_contains($s['ftp-anon']['output'] ?? '', 'Anonymous FTP login allowed')) {
-                $f[] = vuln_finding('ftp-anon', 7.5, 'Anonymous FTP login allowed', 'Anyone can log in to this FTP server without a password.',
-                    'Disable anonymous FTP, or remove anything sensitive from it.', $p);
-            } elseif ($p['tunnel'] !== 'ssl') {
-                $f[] = vuln_finding('ftp-cleartext', 4.8, 'FTP sends passwords in cleartext', 'FTP logins are not encrypted.',
-                    'Use SFTP or FTPS instead of plain FTP.', $p);
-            }
-        }
-        if (isset($s['vnc-info']) && preg_match('/\bNone\b/', $s['vnc-info']['output'])) {
-            $f[] = vuln_finding('vnc-noauth', 9.8, 'VNC allows access without a password', 'The VNC server offers the "None" security type: anyone can see and control the screen.',
-                'Set a VNC password (or turn VNC off) and restrict who can reach it.', $p);
-        }
-        if (isset($s['redis-info']) && preg_match('/Version/i', $s['redis-info']['output'])) {
-            $f[] = vuln_finding('redis-noauth', 9.8, 'Redis open without authentication', 'Anyone who can reach this port can read and change all data and often run commands.',
-                'Set requirepass / ACLs, bind Redis to localhost, or firewall the port.', $p);
-        }
-        if (isset($s['mongodb-info']) && preg_match('/version/i', $s['mongodb-info']['output']) && !preg_match('/auth|unauthorized/i', $s['mongodb-info']['output'])) {
-            $f[] = vuln_finding('mongodb-noauth', 9.8, 'MongoDB open without authentication', 'The database answers without logging in.',
-                'Enable authentication (security.authorization) and restrict network access.', $p);
-        }
-        if (isset($s['docker-version']) && preg_match('/Version/i', $s['docker-version']['output'])) {
-            $f[] = vuln_finding('docker-api', 10.0, 'Docker API open without TLS or authentication', 'Anyone who can reach this port controls Docker on the host, which means root on it.',
-                'Stop exposing the Docker socket over TCP, or protect it with TLS client certificates.', $p);
-        }
-        if (isset($s['ssl-enum-ciphers'])) {
-            $d = $s['ssl-enum-ciphers']['data'];
-            if (isset($d['SSLv3'])) {
-                $f[] = vuln_finding('tls-sslv3', 7.5, 'SSLv3 enabled', 'SSL 3.0 is broken (POODLE) and must not be used.', 'Disable SSLv3; allow TLS 1.2 and 1.3 only.', $p, ['CVE-2014-3566']);
-            }
-            $old = array_values(array_intersect(['TLSv1.0', 'TLSv1.1'], array_keys($d)));
-            if ($old) {
-                $f[] = vuln_finding('tls-old', 5.3, 'Outdated TLS versions enabled (' . implode(', ', $old) . ')', 'TLS 1.0 and 1.1 are deprecated and have known weaknesses.',
-                    'Allow TLS 1.2 and 1.3 only.', $p);
-            }
-            $grade = $d['least strength'] ?? null;
-            if (in_array($grade, ['D', 'E', 'F'], true)) {
-                $f[] = vuln_finding('tls-weak-ciphers', 5.9, "Weak TLS ciphers offered (grade $grade)", 'The server offers ciphers that are weak or broken.',
-                    'Remove weak ciphers (RC4, 3DES, export and NULL ciphers) from the TLS configuration.', $p);
-            }
-        }
-        if (isset($s['ssl-cert'])) {
-            $d = $s['ssl-cert']['data'];
-            $notAfter = isset($d['validity']['notAfter']) ? strtotime($d['validity']['notAfter']) : false;
-            if ($notAfter && $notAfter < $now) {
-                $f[] = vuln_finding('cert-expired', 5.3, 'TLS certificate expired', 'The certificate expired on ' . gmdate('Y-m-d', $notAfter) . '.',
-                    'Renew the certificate.', $p);
-            } elseif ($notAfter && $notAfter < $now + 30 * 86400) {
-                $f[] = vuln_finding('cert-expiring', 3.1, 'TLS certificate expires within 30 days', 'The certificate expires on ' . gmdate('Y-m-d', $notAfter) . '.',
-                    'Renew the certificate before it expires.', $p);
-            }
-            if (!empty($d['subject']) && $d['subject'] === ($d['issuer'] ?? null)) {
-                $f[] = vuln_finding('cert-self-signed', 0.0, 'Self-signed TLS certificate', 'Browsers warn about it, and users learn to click through warnings.',
-                    'Use a certificate from your own CA or a public one if the service is used by people.', $p);
-            }
-        }
-        $title = $s['http-title']['data']['title'] ?? (preg_match('/^(.*?)(\n|$)/', $s['http-title']['output'] ?? '', $mt) ? $mt[1] : '');
-        if (in_array($name, ['http', 'http-alt', 'http-proxy'], true) && $p['tunnel'] !== 'ssl'
-            && preg_match('/log ?in|sign ?in|admin|router|configuration|management|dashboard/i', $title)) {
-            $f[] = vuln_finding('http-login', 3.7, 'Login page served over unencrypted HTTP', "\"$title\": passwords typed here travel unencrypted.",
-                'Serve the admin interface over HTTPS only.', $p);
-        }
-        if (in_array($p['port'], [3306, 5432, 1433, 1521, 9200, 5984], true)) {
-            $f[] = vuln_finding('db-exposed', 0.0, 'Database port reachable from the network', "Port {$p['port']} accepts connections from this network.",
-                'Bind the database to localhost or firewall it to the servers that need it.', $p);
-        }
-        if ($p['port'] === 3389 || $name === 'ms-wbt-server') {
-            $f[] = vuln_finding('rdp-exposed', 0.0, 'Remote Desktop reachable', 'RDP is reachable from this network; it is a common target for password guessing.',
-                'Require Network Level Authentication and limit who can reach port 3389.', $p);
-        }
-    }
-    $smb = $host['hostscripts']['smb-protocols'] ?? null;
-    if ($smb && (str_contains($smb['output'], 'SMBv1') || str_contains($smb['output'], 'NT LM 0.12'))) {
-        $f[] = vuln_finding('smbv1', 8.1, 'SMBv1 enabled', 'SMB version 1 is obsolete and was used by WannaCry and NotPetya (EternalBlue).',
-            'Disable SMBv1 (Windows: Disable-WindowsOptionalFeature SMB1Protocol; Samba: server min protocol = SMB2).', null, ['CVE-2017-0144']);
-    }
-    return $f;
-}
-
-/** SNMP answering the default community. */
-function snmp_public_finding(string $ip): ?array {
-    $s = snmp_probe($ip, 'public', 0.8);
-    if (!$s) return null;
-    return vuln_finding('snmp-public', 5.3, 'SNMP readable with the default "public" community',
-        'Anyone on the network can read the device\'s configuration and network details over SNMP.',
-        'Change the community to a private value, or use SNMPv3; restrict SNMP to your monitoring server.');
-}
-
-// ---- external databases (NVD, OSV) ----
-
-function vuln_cache_get(string $key, int $ttlSec): ?array {
-    $q = db()->prepare('SELECT fetched_at, data FROM vuln_cache WHERE k = ?');
-    $q->execute([substr($key, 0, 190)]);
-    $r = $q->fetch();
-    return $r && (int) $r['fetched_at'] > now_ms() - $ttlSec * 1000 ? json_decode($r['data'], true) : null;
-}
-
-function vuln_cache_put(string $key, array $data): void {
-    db()->prepare('INSERT INTO vuln_cache (k, fetched_at, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE fetched_at = VALUES(fetched_at), data = VALUES(data)')
-        ->execute([substr($key, 0, 190), now_ms(), json_encode($data)]);
-}
-
-/** GET (or POST JSON) -> [status, decoded body]. */
-function vuln_http_json(string $url, ?array $post = null): array {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_USERAGENT => 'WebMonitor vulnerability scan', CURLOPT_HTTPHEADER => ['Accept: application/json', 'Content-Type: application/json']]);
-    if ($post !== null) { curl_setopt($ch, CURLOPT_POST, true); curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post)); }
-    $body = curl_exec($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
-    return [$code, is_string($body) ? json_decode($body, true) : null];
-}
-
-/** nmap "cpe:/a:openbsd:openssh:8.9p1" -> NVD match string "cpe:2.3:a:openbsd:openssh:8.9:p1", or null without a version. */
-function nmap_cpe_to_23(string $cpe): ?string {
-    if (!preg_match('#^cpe:/([aoh]):([^:]+):([^:]+):([^:]+)(?::([^:]+))?#', strtolower($cpe), $m)) return null;
-    [$part, $vendor, $product, $version, $update] = [$m[1], $m[2], $m[3], $m[4], $m[5] ?? ''];
-    if ($update === '' && preg_match('/^([\d.]+)(p\d+)$/', $version, $v)) [$version, $update] = [$v[1], $v[2]];   // OpenSSH 8.9p1
-    if (!preg_match('/\d/', $version)) return null;
-    return "cpe:2.3:$part:$vendor:$product:$version" . ($update !== '' ? ":$update" : '');
-}
-
-/** Known CVEs for a product version (NVD), highest score first: [{id, score, summary}]. */
-function nvd_cves(string $cpe23): array {
-    static $last = 0.0;
-    if (($c = vuln_cache_get("nvd:$cpe23", VULN_NVD_TTL_SEC)) !== null) return $c;
-    $url = 'https://services.nvd.nist.gov/rest/json/cves/2.0?noRejected&resultsPerPage=500&virtualMatchString=' . rawurlencode($cpe23);
-    for ($try = 0; $try < 3; $try++) {
-        $wait = 6.5 - (microtime(true) - $last);   // public rate limit: 5 requests per 30 s
-        if ($wait > 0) usleep((int) ($wait * 1e6));
-        $last = microtime(true);
-        [$code, $j] = vuln_http_json($url);
-        if ($code === 200 && is_array($j)) break;
-        if ($code === 404) { $j = ['vulnerabilities' => []]; break; }
-        sleep(30);   // 403/429/5xx: back off
-    }
-    if (!is_array($j ?? null)) throw new RuntimeException('NVD did not answer');
-    $out = [];
-    foreach ($j['vulnerabilities'] ?? [] as $v) {
-        $cve = $v['cve'] ?? [];
-        $score = null;
-        foreach (['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV40', 'cvssMetricV2'] as $k) {
-            if (isset($cve['metrics'][$k][0]['cvssData']['baseScore'])) { $score = (float) $cve['metrics'][$k][0]['cvssData']['baseScore']; break; }
-        }
-        $summary = '';
-        foreach ($cve['descriptions'] ?? [] as $d) if (($d['lang'] ?? '') === 'en') { $summary = $d['value']; break; }
-        $out[] = ['id' => $cve['id'] ?? '?', 'score' => $score, 'summary' => mb_substr($summary, 0, 300)];
-    }
-    usort($out, fn($a, $b) => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
-    vuln_cache_put("nvd:$cpe23", $out);
-    return $out;
-}
-
-/** One finding per service with known CVEs (devices without an agent). */
-function service_cve_findings(array $host): array {
-    $f = [];
-    $done = [];
-    foreach ($host['ports'] as $p) {
-        foreach ($p['cpes'] as $cpe) {
-            $c23 = nmap_cpe_to_23($cpe);
-            if (!$c23 || isset($done[$c23]) || in_array($c23, NMAP_PLACEHOLDER_VERSIONS, true)) continue;
-            $done[$c23] = true;
-            $cves = nvd_cves($c23);
-            if (!$cves) continue;
-            $top = $cves[0]['score'] ?? 0.0;
-            $label = trim(($p['product'] ?: $p['name']) . ' ' . $p['version']);
-            $list = array_slice($cves, 0, VULN_MAX_CVES_LISTED);
-            $detail = count($cves) . " known vulnerabilit" . (count($cves) === 1 ? 'y' : 'ies') . " for $label (highest CVSS " . number_format((float) $top, 1) . ").\n"
-                . implode("\n", array_map(fn($c) => "{$c['id']} (" . ($c['score'] !== null ? number_format($c['score'], 1) : '?') . "): {$c['summary']}", array_slice($list, 0, 5)))
-                . "\nMatched by version: a vendor may have fixed some without changing the version number.";
-            $f[] = vuln_finding('cve-service', (float) $top, "$label: " . count($cves) . ' known vulnerabilit' . (count($cves) === 1 ? 'y' : 'ies'),
-                $detail, "Update $label to the vendor's latest version.", $p, array_column($list, 'id'), 'medium');
-        }
-    }
-    return $f;
-}
-
-/** OSV ecosystem for an agent's OS, or null. */
-function osv_ecosystem(array $os): ?string {
-    $id = strtolower((string) ($os['id'] ?? ''));
-    $ver = (string) ($os['version_id'] ?? '');
-    $major = strtok($ver, '.');
-    return match ($id) {
-        'debian' => $major ? "Debian:$major" : null,
-        'ubuntu' => $ver ? "Ubuntu:$ver" . (preg_match('/^\d*[02468]\.04$/', $ver) ? ':LTS' : '') : null,
-        'rocky' => $major ? "Rocky Linux:$major" : null,
-        'almalinux' => $major ? "AlmaLinux:$major" : null,
-        'alpine' => $ver ? 'Alpine:v' . implode('.', array_slice(explode('.', $ver), 0, 2)) : null,
-        default => null,
-    };
-}
-
-/** OSV entry's score: CVSS v3 vector, else the distribution's own rating. */
-function osv_vuln_score(array $v): ?float {
-    foreach ($v['severity'] ?? [] as $s) {
-        if (str_starts_with((string) ($s['type'] ?? ''), 'CVSS_V3') && ($sc = cvss3_base_score((string) $s['score'])) !== null) return $sc;
-    }
-    $text = strtolower((string) ($v['database_specific']['severity'] ?? $v['affected'][0]['ecosystem_specific']['urgency'] ?? ''));
-    return ['critical' => 9.5, 'important' => 8.0, 'high' => 8.0, 'moderate' => 5.5, 'medium' => 5.5, 'low' => 3.0, 'unimportant' => 0.0][$text] ?? null;
-}
-
-/** For each package [name, current version]: [{id, score, aliases}] of vulns OSV knows that have a fix. */
-function osv_package_vulns(string $ecosystem, array $packages): array {
-    $out = $ask = [];
-    foreach ($packages as [$name, $version]) {
-        $c = vuln_cache_get("osvq:$ecosystem:$name:$version", VULN_OSV_TTL_SEC);
-        if ($c !== null) $out[$name] = $c; else $ask[] = [$name, $version];
-    }
-    foreach (array_chunk($ask, 500) as $chunk) {
-        [$code, $j] = vuln_http_json('https://api.osv.dev/v1/querybatch', ['queries' => array_map(
-            fn($p) => ['package' => ['name' => $p[0], 'ecosystem' => $ecosystem], 'version' => $p[1]], $chunk)]);
-        if ($code !== 200 || !is_array($j['results'] ?? null)) throw new RuntimeException('OSV did not answer');
-        foreach ($chunk as $i => [$name, $version]) {
-            $vulns = [];
-            foreach (array_slice($j['results'][$i]['vulns'] ?? [], 0, 25) as $ref) {
-                $v = vuln_cache_get('osv:' . $ref['id'], VULN_OSV_VULN_TTL_SEC);
-                if ($v === null) {
-                    [$vc, $vj] = vuln_http_json('https://api.osv.dev/v1/vulns/' . rawurlencode($ref['id']));
-                    if ($vc !== 200 || !is_array($vj)) continue;
-                    $fixed = false;
-                    foreach ($vj['affected'] ?? [] as $a) foreach ($a['ranges'] ?? [] as $r) foreach ($r['events'] ?? [] as $e) if (isset($e['fixed'])) $fixed = true;
-                    $v = ['id' => $vj['id'], 'score' => osv_vuln_score($vj), 'fixed' => $fixed,
-                          'aliases' => array_values(array_filter($vj['aliases'] ?? [], fn($a) => str_starts_with($a, 'CVE-')))];
-                    vuln_cache_put('osv:' . $ref['id'], $v);
-                }
-                if ($v['fixed']) $vulns[] = $v;
-            }
-            vuln_cache_put("osvq:$ecosystem:$name:$version", $vulns);
-            $out[$name] = $vulns;
-        }
-    }
-    return $out;
-}
-
-/** Findings from a host's agent: pending security updates (with CVEs), antivirus, reboot. */
-function agent_findings(int $hostId): array {
-    $q = db()->prepare('SELECT inventory, inventory_at FROM agents WHERE host_id = ?');
-    $q->execute([$hostId]);
-    $r = $q->fetch();
-    if (!$r || !$r['inventory'] || (int) $r['inventory_at'] < now_ms() - 2 * 86400000) return [];
-    $inv = json_decode($r['inventory'], true) ?: [];
-    $windows = ($inv['os']['id'] ?? '') === 'windows';
-    $f = [];
-    $pkgs = is_array($inv['updates']['packages'] ?? null) ? $inv['updates']['packages'] : [];
-    $security = array_values(array_filter($pkgs, fn($p) => !empty($p['security'])));
-    $osv = [];
-    $eco = $windows ? null : osv_ecosystem((array) ($inv['os'] ?? []));
-    if ($eco && $security) {
-        $withVersion = array_values(array_filter(array_map(fn($p) => [(string) $p['name'], (string) ($p['current'] ?? '')], $security), fn($p) => $p[1] !== ''));
-        try { $osv = osv_package_vulns($eco, $withVersion); } catch (Throwable $e) { $osv = []; }
-    }
-    foreach ($security as $p) {
-        $name = (string) $p['name'];
-        $vulns = $osv[$name] ?? [];
-        $scores = array_filter(array_column($vulns, 'score'), fn($s) => $s !== null);
-        $score = $scores ? max($scores) : 7.5;   // a security update with no score: treat as high
-        $cves = [];
-        foreach ($vulns as $v) foreach ($v['aliases'] ?: [$v['id']] as $c) $cves[$c] = true;
-        $cves = array_keys($cves);
-        $label = $windows && !empty($p['new']) ? "{$p['new']}: $name" : $name;
-        $detail = $windows ? "Windows security update not installed: $name."
-            : "Installed $name " . ($p['current'] ?? '?') . '; security update to ' . ($p['new'] ?? '?') . ' available.'
-              . ($vulns ? ' Fixes ' . count($vulns) . ' known vulnerabilit' . (count($vulns) === 1 ? 'y' : 'ies') . '.' : '');
-        $f[] = vuln_finding('missing-update', (float) $score, ($windows ? 'Missing security update ' : 'Security update pending: ') . mb_substr($label, 0, 200),
-            $detail, 'Install updates (Updates tab, or the host\'s package manager).', null, array_slice($cves, 0, VULN_MAX_CVES_LISTED));
-    }
-    $others = count($pkgs) - count($security);
-    if ($others > 0) {
-        $f[] = vuln_finding('other-updates', 0.0, "$others other update" . ($others === 1 ? '' : 's') . ' pending', 'Updates that are not marked as security fixes.',
-            'Install updates when convenient.');
-    }
-    if (!empty($inv['reboot_required'])) {
-        $f[] = vuln_finding('reboot-pending', 3.1, 'Reboot needed to finish updates', 'Some installed fixes (often the kernel) only take effect after a reboot.',
-            'Reboot the host in a maintenance window.');
-    }
-    $av = antivirus_status($inv['antivirus'] ?? null, $windows ? 'windows' : 'linux');
-    if ($av && $av['state'] === 'off') {
-        $f[] = vuln_finding('antivirus-off', 7.5, 'Antivirus: ' . $av['text'], 'No running antivirus protection on this host.', 'Turn on Microsoft Defender or install an antivirus product.');
-    } elseif ($av && $av['state'] === 'warn') {
-        $f[] = vuln_finding('antivirus-warn', 5.0, 'Antivirus: ' . $av['text'], 'Antivirus protection is not fully working.', 'Update antivirus signatures and turn real-time protection on.');
-    }
-    return $f;
-}
-
-// ---- worker ----
-
-/** Background worker (cli/vulnscan.php): runs queued scans one after another. */
-function run_vuln_scans(): void {
-    $pdo = db();
-    if (!(int) $pdo->query("SELECT GET_LOCK('webmonitor_vulnscan', 0)")->fetchColumn()) return;
-    try {
-        // A scan left "running" by a worker that died.
-        $pdo->exec("UPDATE vuln_scans SET status = 'failed', error = 'interrupted', finished_at = " . now_ms() . " WHERE status = 'running'");
-        while ($scan = $pdo->query("SELECT * FROM vuln_scans WHERE status = 'queued' ORDER BY id LIMIT 1")->fetch()) {
-            run_vuln_scan($scan);
-        }
-    } finally {
-        $pdo->query("SELECT RELEASE_LOCK('webmonitor_vulnscan')");
-    }
-}
-
-function run_vuln_scan(array $scan): void {
-    $pdo = db();
-    $id = (int) $scan['id'];
-    $targets = vuln_targets($scan['scope']);
-    $pdo->prepare("UPDATE vuln_scans SET status = 'running', started_at = ?, total_hosts = ?, done_hosts = 0 WHERE id = ?")
-        ->execute([now_ms(), count($targets), $id]);
-    $agentHosts = array_flip(array_map('intval', $pdo->query('SELECT host_id FROM agents')->fetchAll(PDO::FETCH_COLUMN)));
-    $done = 0;
-    try {
-        if (!nmap_path()) throw new RuntimeException('nmap is not installed on the server (dnf install nmap)');
-        foreach (array_chunk(array_keys($targets), VULN_NMAP_BATCH) as $batch) {
-            $status = $pdo->query("SELECT status FROM vuln_scans WHERE id = $id")->fetchColumn();
-            if ($status === 'cancelled') return;
-            $pdo->prepare('UPDATE vuln_scans SET current = ? WHERE id = ?')->execute([mb_substr(implode(', ', $batch), 0, 255), $id]);
-            $results = nmap_scan($batch);
-            foreach ($batch as $ip) {
-                $hostId = $targets[$ip];
-                $h = $results[$ip] ?? ['ports' => [], 'hostscripts' => [], 'os' => null];
-                $error = null;
-                $findings = builtin_checks($h);
-                if ($sp = snmp_public_finding($ip)) $findings[] = $sp;
-                try {
-                    $findings = array_merge($findings, $hostId && isset($agentHosts[$hostId]) ? agent_findings($hostId) : service_cve_findings($h));
-                } catch (Throwable $e) {
-                    $error = 'CVE lookup failed: ' . $e->getMessage();
-                }
-                $ports = implode(',', array_map(fn($p) => $p['port'], $h['ports']));
-                $pdo->prepare('INSERT INTO vuln_hosts (scan_id, ip, host_id, scanned_at, open_ports, os_guess, error) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                    ->execute([$id, $ip, $hostId, now_ms(), mb_substr($ports, 0, 1000) ?: null, $h['os'] ? mb_substr($h['os'], 0, 120) : null, $error]);
-                $ins = $pdo->prepare('INSERT INTO vuln_findings (scan_id, ip, port, service, check_id, severity, cvss, title, detail, solution, refs, confidence)
-                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                foreach ($findings as $f) {
-                    $ins->execute([$id, $ip, $f['port'], $f['service'] ? mb_substr($f['service'], 0, 120) : null, $f['check_id'], $f['severity'], $f['cvss'],
-                        mb_substr($f['title'], 0, 255), $f['detail'], mb_substr($f['solution'], 0, 1000), $f['refs'] ? json_encode($f['refs']) : null, $f['confidence']]);
-                }
-                $done++;
-            }
-            $pdo->prepare('UPDATE vuln_scans SET done_hosts = ? WHERE id = ?')->execute([$done, $id]);
-        }
-        $pdo->prepare("UPDATE vuln_scans SET status = 'done', finished_at = ?, current = NULL WHERE id = ?")->execute([now_ms(), $id]);
-    } catch (Throwable $e) {
-        $pdo->prepare("UPDATE vuln_scans SET status = 'failed', finished_at = ?, error = ?, current = NULL WHERE id = ?")
-            ->execute([now_ms(), mb_substr($e->getMessage(), 0, 500), $id]);
-    }
-}
-
-// ---- report ----
-
-/** Current results: each address's newest scanned result. */
-function vuln_report(): array {
-    $pdo = db();
-    $hostNames = [];
-    foreach ($pdo->query('SELECT id, name, ip_address FROM hosts') as $h) $hostNames[$h['ip_address']] = ['id' => (int) $h['id'], 'name' => $h['name']];
-    $latest = $pdo->query('SELECT v.* FROM vuln_hosts v JOIN (SELECT ip, MAX(scanned_at) m FROM vuln_hosts GROUP BY ip) l
-                           ON l.ip = v.ip AND l.m = v.scanned_at')->fetchAll();
-    $hosts = [];
-    $summary = array_fill_keys(VULN_SEVERITIES, 0);
-    $findings = [];
-    $q = $pdo->prepare('SELECT * FROM vuln_findings WHERE scan_id = ? AND ip = ? ORDER BY cvss DESC, title');
-    foreach ($latest as $v) {
-        $q->execute([$v['scan_id'], $v['ip']]);
-        $counts = array_fill_keys(VULN_SEVERITIES, 0);
-        foreach ($q->fetchAll() as $f) {
-            $counts[$f['severity']]++;
-            $summary[$f['severity']]++;
-            $findings[] = ['id' => (int) $f['id'], 'ip' => $f['ip'], 'port' => $f['port'] !== null ? (int) $f['port'] : null, 'service' => $f['service'],
-                'check' => $f['check_id'], 'severity' => $f['severity'], 'cvss' => $f['cvss'] !== null ? (float) $f['cvss'] : null, 'title' => $f['title'],
-                'detail' => $f['detail'], 'solution' => $f['solution'], 'refs' => $f['refs'] ? json_decode($f['refs'], true) : [],
-                'confidence' => $f['confidence'], 'source' => $f['source']];
-        }
-        $n = $hostNames[$v['ip']] ?? null;
-        $hosts[] = ['ip' => $v['ip'], 'hostId' => $n['id'] ?? null, 'name' => $n && $n['name'] !== $v['ip'] ? $n['name'] : null,
-            'scannedAt' => (int) $v['scanned_at'], 'openPorts' => $v['open_ports'] ? array_map('intval', explode(',', $v['open_ports'])) : [],
-            'os' => $v['os_guess'], 'error' => $v['error'], 'counts' => $counts,
-            'risk' => $counts['critical'] * 1000000 + $counts['high'] * 10000 + $counts['medium'] * 100 + $counts['low']];
-    }
-    usort($hosts, fn($a, $b) => $b['risk'] <=> $a['risk'] ?: ip2long($a['ip']) <=> ip2long($b['ip']));
-    $scans = array_map(fn($s) => ['id' => (int) $s['id'], 'scope' => $s['scope'], 'status' => $s['status'], 'createdAt' => (int) $s['created_at'],
-        'startedAt' => $s['started_at'] ? (int) $s['started_at'] : null, 'finishedAt' => $s['finished_at'] ? (int) $s['finished_at'] : null,
-        'total' => (int) $s['total_hosts'], 'done' => (int) $s['done_hosts'], 'current' => $s['current'], 'error' => $s['error']],
-        $pdo->query('SELECT * FROM vuln_scans ORDER BY id DESC LIMIT 10')->fetchAll());
-    return ['summary' => $summary, 'hosts' => $hosts, 'findings' => $findings, 'scans' => $scans, 'nmap' => nmap_path() !== null,
-            'subnets' => subnet_names(), 'generatedAt' => now_ms()];
-}
-WEBMON_FILE_EOF
-
 mkdir -p "$(dirname "$APP_DIR/includes/wireless.php")"
 cat > "$APP_DIR/includes/wireless.php" <<'WEBMON_FILE_EOF'
 <?php
@@ -29429,6 +26507,13 @@ CREATE TABLE IF NOT EXISTS audit_log (
   INDEX idx_action (action),
   INDEX idx_user (username)
 ) ENGINE=InnoDB;
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/migrations/033_remote.sql")"
+cat > "$APP_DIR/migrations/033_remote.sql" <<'WEBMON_FILE_EOF'
+-- WebMonitor Pro remote access: per-host overrides (which methods, ports,
+-- user name, web address) as JSON. Empty = worked out from the OS / device type.
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS remote_cfg TEXT NULL;
 WEBMON_FILE_EOF
 
 sed -i "s/__WEBMON_DB_PASS__/${DB_PASS}/" "$APP_DIR/config.php"

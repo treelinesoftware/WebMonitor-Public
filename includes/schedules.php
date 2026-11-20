@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/jobs.php';
 require_once __DIR__ . '/notify.php';
-require_once __DIR__ . '/changes.php';
+require_once __DIR__ . '/pro.php';   // change records (WebMonitor Pro) or stand-ins
 
 /**
  * Update windows: recurring jobs (e.g. security updates every Sunday at
@@ -65,6 +65,7 @@ function schedule_host_ids(array $sched): array {
         return array_values(array_filter(array_map('intval', json_decode($sched['host_ids'], true) ?: [])));
     }
     if ($sched['targets'] === 'groups') {
+        if (!pro_feature('group_schedules')) return [];   // WebMonitor Pro
         // Cards in the groups right now that have an agent (no agent = nothing to update).
         $agents = agent_summaries();
         $ids = array_values(array_filter(hosts_in_groups(json_decode((string) ($sched['group_ids'] ?? ''), true) ?: []),
@@ -128,6 +129,10 @@ function schedule_fields(array $in): array {
     if ($groupIds) {
         $known = array_map('intval', db()->query('SELECT id FROM card_groups')->fetchAll(PDO::FETCH_COLUMN));
         $groupIds = array_values(array_intersect($groupIds, $known));
+    }
+    // Without Pro an existing group schedule can still be turned off or deleted.
+    if ($targets === 'groups' && !pro_feature('group_schedules') && !(array_key_exists('enabled', $in) && !$in['enabled'])) {
+        throw new InvalidArgumentException('Targeting groups is a WebMonitor Pro feature.');
     }
     if ($targets === 'groups' && !$groupIds) throw new InvalidArgumentException('Pick at least one group.');
     return [

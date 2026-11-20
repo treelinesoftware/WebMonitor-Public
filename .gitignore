@@ -4,3 +4,8 @@ __pycache__/
 .env
 .claude/worktrees/
 *.code-workspace
+# WebMonitor Pro: its own private repository (WebMonitor-Pro), checked out here.
+/pro/
+# Built from pro/ by deploy/build-install-script.py; never committed here.
+deploy/rocky-install-pro.sh
+deploy/rocky-upgrade-pro.sh

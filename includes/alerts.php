@@ -5,7 +5,7 @@ require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/hostdetails.php';   // NAS checks (nas.php)
 require_once __DIR__ . '/services.php';
 require_once __DIR__ . '/speedtest.php';
-require_once __DIR__ . '/flexlm.php';
+require_once __DIR__ . '/pro.php';   // licence servers (WebMonitor Pro) or stand-ins
 
 /**
  * Alert evaluation, run every minute by cli/cron.php.

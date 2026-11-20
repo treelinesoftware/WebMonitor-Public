@@ -14,7 +14,7 @@ require_once __DIR__ . '/../includes/flows.php';
 require_once __DIR__ . '/../includes/devicescan.php';
 require_once __DIR__ . '/../includes/services.php';
 require_once __DIR__ . '/../includes/netlive.php';
-require_once __DIR__ . '/../includes/flexlm.php';
+require_once __DIR__ . '/../includes/pro.php';   // licence servers (WebMonitor Pro) or stand-ins
 
 if (PHP_SAPI !== 'cli') exit(1);
 

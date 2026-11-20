@@ -200,7 +200,7 @@ function showReport(name) {
   if (name === 'topology') loadTopologyReport();
   if (name === 'devices') loadDevicesReport();   // devices.js
   if (name === 'traffic') loadTrafficReport();   // traffic.js
-  if (name === 'audit') loadAuditLog();   // changes.js
+  if (name === 'audit' && typeof loadAuditLog === 'function') loadAuditLog();   // changes.js (Pro)
 }
 document.querySelectorAll('.report-picker [data-report]').forEach(b => b.addEventListener('click', () => showReport(b.dataset.report)));
 

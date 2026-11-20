@@ -97,6 +97,7 @@ function renderHostEditor(host) {
           : '<span class="muted small">No groups yet.</span>'}</div></div>
       <label class="check"><input type="checkbox" id="he-bw-exempt" ${host.bwExempt ? 'checked' : ''} />
         Expected high traffic — no bandwidth alerts for this host (e.g. a download or backup server)</label>
+      <div id="he-pro"></div>
       <p class="hint">Set the device type to <strong>NAS</strong> for QNAP storage: WebMonitor then reads its volumes,
         drives, RAID pools, fans and temperatures over SNMP every 5 minutes and alerts on them (no agent needed).</p>
       <div class="form-row">
@@ -105,6 +106,7 @@ function renderHostEditor(host) {
         <span class="form-msg" id="he-msg"></span>
       </div>
     </form>`;
+  if (WM_PRO.hostEditor) WM_PRO.hostEditor(host, document.getElementById('he-pro'));   // Pro: remote access settings
   document.getElementById('he-cancel').addEventListener('click', () => box.classList.add('hidden'));
   document.getElementById('host-edit-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -122,7 +124,16 @@ function renderHostEditor(host) {
     const bw = document.getElementById('he-bw-exempt').checked;
     if (bw !== !!host.bwExempt) changes.bwExempt = bw;
     const msg = document.getElementById('he-msg');
-    if (!Object.keys(changes).length) { box.classList.add('hidden'); return; }
+    let proSaved = false;
+    if (WM_PRO.hostEditorSave) {
+      try { proSaved = await WM_PRO.hostEditorSave(host); }
+      catch (err) { msg.textContent = err.message; msg.className = 'form-msg err'; return; }
+    }
+    if (!Object.keys(changes).length) {
+      box.classList.add('hidden');
+      if (proSaved) { render(); updateModal(); }
+      return;
+    }
     const resp = await api(`api/host.php?id=${host.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes),
     });

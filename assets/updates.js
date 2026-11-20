@@ -52,9 +52,9 @@ function showView(name, subnet = '') {
   document.getElementById('services-view').classList.toggle('hidden', !services);
   document.getElementById('reports-view').classList.toggle('hidden', !reports);
   document.getElementById('scans-view').classList.toggle('hidden', !scans);
-  document.getElementById('security-view').classList.toggle('hidden', !security);
+  document.getElementById('security-view')?.classList.toggle('hidden', !security);   // Pro
   document.getElementById('network-view').classList.toggle('hidden', !network);
-  document.getElementById('flexlm-view').classList.toggle('hidden', !flexlm);
+  document.getElementById('flexlm-view')?.classList.toggle('hidden', !flexlm);       // Pro
   document.getElementById('help-view').classList.toggle('hidden', !help);
   document.getElementById('help-btn')?.classList.toggle('active', help);
   if (!other) {
@@ -72,9 +72,9 @@ function showView(name, subnet = '') {
     renderUpdates();
     loadJobs();
     loadSchedules();
-    loadChanges();   // changes.js
+    if (typeof loadChanges === 'function') loadChanges();   // changes.js (Pro)
     let tick = 0;
-    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) { loadSchedules(); loadChanges(); } }, 10000);
+    jobsTimer = setInterval(() => { loadJobs(); if (++tick % 3 === 0) { loadSchedules(); if (typeof loadChanges === 'function') loadChanges(); } }, 10000);
   }
   if (scans && typeof loadScanQueue === 'function') loadScanQueue();
   if (typeof securityViewShown === 'function') securityViewShown(security);   // vulns.js
@@ -221,7 +221,7 @@ async function startJobs(hostIds, type, params = {}) {
     }
     selectedHosts.clear();
     loadJobs();
-    loadChanges();   // changes.js
+    if (typeof loadChanges === 'function') loadChanges();   // changes.js (Pro)
     return data;
   } catch (err) {
     alert(err.message);
@@ -567,7 +567,7 @@ function renderScheduleForm(s = null) {
       ${WEEKDAYS.map((d, i) => `<label><input type="checkbox" class="sf-day" value="${1 << i}" ${days & (1 << i) ? 'checked' : ''} /> ${d}</label>`).join('')}
     </div></div>
     <div><div class="field-label">Hosts</div><div class="choice-group">
-      ${[['hosts', 'Pick hosts'], ['groups', 'Groups'], ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
+      ${[['hosts', 'Pick hosts'], ...(proOn('group_schedules') || targets === 'groups' ? [['groups', proOn('group_schedules') ? 'Groups' : 'Groups (Pro)']] : []), ['all', 'All agent hosts'], ['linux', 'All Linux'], ['windows', 'All Windows']].map(([v, l]) =>
         `<label><input type="radio" name="sf-targets" value="${v}" ${v === targets ? 'checked' : ''} /> ${l}</label>`).join('')}
     </div></div>
     <div id="sf-hosts" class="sf-hosts">${hosts.map(h => `

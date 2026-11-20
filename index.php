@@ -14,12 +14,13 @@ $user = require_login_page();
 <meta name="locations" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM locations ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
 <meta name="card-groups" content="<?= htmlspecialchars(json_encode(db()->query('SELECT id, name FROM card_groups ORDER BY sort, name')->fetchAll(PDO::FETCH_KEY_PAIR) ?: new stdClass()), ENT_QUOTES) ?>" />
 <meta name="screens" content="<?= htmlspecialchars(json_encode(screens_list()), ENT_QUOTES) ?>" />
+<meta name="pro" content="<?= htmlspecialchars(json_encode(array_diff_key(pro_status(), ['catalog' => 1])), ENT_QUOTES) ?>" />
 <meta name="csrf-token" content="<?= htmlspecialchars(csrf_token(), ENT_QUOTES) ?>" />
 <title>WebMonitor</title>
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=59" />
+<link rel="stylesheet" href="assets/style.css?v=60" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -37,8 +38,12 @@ $user = require_login_page();
       <button class="view-btn nav-btn" data-view="updates" type="button">Updates <span class="tab-count" id="count-updates"></span></button>
       <button class="view-btn nav-btn" data-view="reports" type="button">Reports</button>
       <button class="view-btn nav-btn" data-view="scans" type="button">Scans</button>
+<?php if (pro_feature('vulns')): ?>
       <button class="view-btn nav-btn" data-view="security" type="button">Security <span class="tab-count" id="count-security"></span></button>
+<?php endif; ?>
+<?php if (pro_feature('flexlm')): ?>
       <button class="view-btn nav-btn" data-view="flexlm" type="button">Licences <span class="tab-count" id="count-flexlm"></span></button>
+<?php endif; ?>
     </nav>
     <div class="app-bar-right">
       <button type="button" class="scan-pill no-print" id="scan-pill" title="Open the scan queue">Scans · checking…</button>
@@ -144,34 +149,7 @@ $user = require_login_page();
     <div class="net-switch panel-box hidden" id="net-switch"></div>
   </section>
 
-  <section id="flexlm-view" class="hidden">
-    <div class="report-head">
-      <div><h2 class="report-title">Licences</h2><div class="muted small" id="flm-summary-line">FlexLM licence servers</div></div>
-      <div class="section-actions no-print">
-        <button type="button" class="primary-btn admin-only" id="flm-add">Add licence server</button>
-      </div>
-    </div>
-    <div id="flm-notice"></div>
-    <div class="svc-tiles" id="flm-tiles"></div>
-    <div class="host-toolbar">
-      <div class="segmented" role="group" aria-label="Show" id="flm-tabs">
-        <button class="tab-btn active" data-flm-tab="servers" type="button">Servers</button>
-        <button class="tab-btn" data-flm-tab="inuse" type="button">In use now <span class="tab-count" id="flm-count-inuse"></span></button>
-        <button class="tab-btn" data-flm-tab="history" type="button">History</button>
-      </div>
-      <label class="search-box"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input type="search" id="flm-search" placeholder="Search server, feature, user, computer…" autocomplete="off" aria-label="Search licences" /></label>
-    </div>
-    <div id="flm-body"></div>
-    <details class="no-print sec-about"><summary>How licence monitoring works</summary>
-      <p class="hint">WebMonitor runs <code>lmutil lmstat -a</code> against each licence server on its schedule (every 5 minutes by default).
-        It records whether the licence server and its vendor daemons are up, how many licences of each feature are in use, when
-        they expire and who has them checked out. A server shows down after two failed checks in a row.</p>
-      <p class="hint">lmutil comes from Flexera and isn't included with WebMonitor. If the page says it's missing, see
-        <a href="#help=flexlm" data-help-link="flexlm">Help → FlexLM licences</a> for where to put it.</p>
-    </details>
-  </section>
-
+<?php pro_view('flexlm-view', 'flexlm'); ?>
   <section id="help-view" class="hidden">
     <div class="report-head">
       <div><h2 class="report-title">Help</h2><div class="muted small">Guides for installing, setting up and using WebMonitor</div></div>
@@ -185,32 +163,7 @@ $user = require_login_page();
     </div>
   </section>
 
-  <section id="security-view" class="hidden">
-    <div class="report-head">
-      <div><h2 class="report-title">Vulnerability report</h2><div class="muted small" id="sec-summary-line"></div></div>
-      <div class="section-actions no-print">
-        <select id="sec-scope" class="admin-only" aria-label="What to scan"></select>
-        <button type="button" class="section-btn admin-only" id="sec-start">Start scan</button>
-        <button type="button" class="section-btn" id="sec-print">Print / PDF</button>
-      </div>
-    </div>
-    <div id="sec-progress"></div>
-    <div id="sec-tiles" class="sec-tiles"></div>
-    <div id="sec-body"></div>
-    <details class="no-print sec-about"><summary>How scanning works</summary>
-      <p class="hint">nmap checks each device's top 1,000 TCP ports and identifies the services and versions. Built-in checks then look for
-        cleartext logins (Telnet, FTP), services open without a password (VNC, Redis, MongoDB, Docker), SMBv1, old TLS versions and weak
-        ciphers, expired certificates, login pages over plain HTTP and SNMP readable with "public".</p>
-      <p class="hint">Devices without an agent: known CVEs are looked up for each service version in the NVD database. These are
-        <em>version-based</em> and may include issues the vendor fixed without changing the version. Hosts with an agent: pending
-        security updates with the CVEs they fix (OSV database), antivirus state and pending reboots, like a logged-in scan.
-        Only product names and versions are sent to NVD and OSV, never addresses.</p>
-      <p class="hint">Severity follows CVSS: <strong>Critical</strong> 9.0–10, <strong>High</strong> 7.0–8.9, <strong>Medium</strong> 4.0–6.9,
-        <strong>Low</strong> 0.1–3.9, <strong>Info</strong> 0 (worth knowing, not a vulnerability). A full scan of every device takes a while;
-        it runs in the background and the page updates as it goes.</p>
-    </details>
-  </section>
-
+<?php pro_view('security-view', 'vulns'); ?>
   <section id="scans-view" class="hidden">
     <div class="report-head">
       <div><h2 class="report-title">Scan queue</h2><div class="muted small" id="scan-queue-summary"></div></div>
@@ -232,18 +185,7 @@ $user = require_login_page();
     </div>
     <div id="updates-table"></div>
     <div class="schedule-summary" id="schedule-summary"></div>
-    <div class="updates-h-row">
-      <h3 class="updates-h">Change records <span class="tab-count" id="changes-pending"></span></h3>
-      <div class="section-actions">
-        <div class="segmented" role="group" aria-label="Show changes">
-          <button type="button" class="group-btn active" data-changes="open">Open</button>
-          <button type="button" class="group-btn" data-changes="all">All</button>
-        </div>
-        <button type="button" class="section-btn admin-only" id="changes-csv">Export CSV</button>
-      </div>
-    </div>
-    <p class="hint" id="changes-hint"></p>
-    <div id="changes-table"></div>
+<?php pro_view('updates-changes', 'changes'); ?>
     <h3 class="updates-h">Job history</h3>
     <div id="jobs-table"></div>
   </section>
@@ -253,39 +195,11 @@ $user = require_login_page();
       <button type="button" class="group-btn active" data-report="topology">Network topology</button>
       <button type="button" class="group-btn" data-report="devices">Devices</button>
       <button type="button" class="group-btn" data-report="traffic">Traffic</button>
+<?php if (pro_feature('changes')): ?>
       <button type="button" class="group-btn admin-only" data-report="audit">Audit log</button>
+<?php endif; ?>
     </div>
-    <div class="report-panel hidden" data-report="audit">
-      <div class="report-head">
-        <div>
-          <h2 class="report-title">Audit log</h2>
-          <div class="muted small" id="audit-meta"></div>
-        </div>
-        <div class="section-actions no-print">
-          <button type="button" class="section-btn" id="audit-verify">Verify integrity</button>
-          <button type="button" class="section-btn" id="audit-csv">Export CSV</button>
-        </div>
-      </div>
-      <p class="hint no-print">Every change made in WebMonitor — sign-ins, settings, hosts, users, update jobs, schedules and change
-        records — with who, when and from where. Entries can't be edited from WebMonitor, and each one is chained to the one before
-        by a hash, so <strong>Verify integrity</strong> shows whether any were changed or removed in the database.</p>
-      <form class="audit-filters no-print" id="audit-filters">
-        <input type="search" id="audit-q" placeholder="Search summary, target, details…" />
-        <select id="audit-user"><option value="">Anyone</option><option value="(system)">WebMonitor (automatic)</option></select>
-        <select id="audit-action">
-          <option value="">All actions</option>
-          <option value="change.">Change records</option>
-          <option value="schedule.">Schedule runs</option>
-          <option value="auth.">Sign-ins</option>
-          <option value="api.">Changes made in the dashboard</option>
-          <option value="audit.">Audit log checks / exports</option>
-        </select>
-        <select id="audit-outcome"><option value="">Any outcome</option><option value="ok">OK</option><option value="denied">Denied</option><option value="failed">Failed</option></select>
-        <label>From <input type="date" id="audit-from" /></label>
-        <label>To <input type="date" id="audit-to" /></label>
-      </form>
-      <div id="audit-body"></div>
-    </div>
+<?php pro_view('reports-audit', 'changes'); ?>
     <div class="report-panel" data-report="topology">
     <div class="report-head">
       <div>
@@ -377,11 +291,20 @@ $user = require_login_page();
         <div class="settings-nav-group">
           <div class="settings-nav-label">Updates</div>
           <button type="button" class="settings-nav-item" data-panel="schedules" data-desc="Recurring update windows for hosts with an agent.">Update schedules</button>
-          <button type="button" class="settings-nav-item admin-only" data-panel="changes" data-desc="Change records, the change email list and optional approval.">Change management</button>
         </div>
         <div class="settings-nav-group admin-only">
           <div class="settings-nav-label">Alerts</div>
           <button type="button" class="settings-nav-item" data-panel="notifications" data-desc="Where alerts are sent, what triggers them, and what was sent.">Notifications</button>
+        </div>
+        <div class="settings-nav-group admin-only">
+          <div class="settings-nav-label">Pro</div>
+          <button type="button" class="settings-nav-item" data-panel="pro" data-desc="Unlock WebMonitor Pro and choose which Pro features are on.">WebMonitor Pro</button>
+<?php if (pro_feature('changes')): ?>
+          <button type="button" class="settings-nav-item" data-panel="changes" data-desc="Change records, the change email list and optional approval.">Change management</button>
+<?php endif; ?>
+<?php if (pro_feature('remote')): ?>
+          <button type="button" class="settings-nav-item" data-panel="remote" data-desc="Remote buttons on host cards, and who may use them.">Remote access</button>
+<?php endif; ?>
         </div>
         <div class="settings-nav-group admin-only">
           <div class="settings-nav-label">Administration</div>
@@ -534,37 +457,11 @@ $user = require_login_page();
       </form>
     </section>
 
-    <section class="settings-panel admin-only hidden" data-panel="changes">
-      <p class="hint settings-intro">Every update window and every manual update, reboot, agent upgrade or service restart gets a change
-        record (Updates → Change records) and an entry in the audit log (Reports → Audit log).</p>
-      <div id="cm-email-warning" class="settings-raw"></div>
-      <form id="cm-form" class="settings-form settings-raw settings-cards">
-        <div class="settings-card">
-          <h3>Change emails</h3>
-          <p class="hint">Sent to their own list through your email channel in <strong>Notifications</strong>; alert emails are unaffected.</p>
-          <label>Email addresses (comma-separated)
-            <textarea id="cm-recipients" rows="2" placeholder="changes@example.com, it-manager@example.com"></textarea></label>
-          <label class="check"><input type="checkbox" id="cm-manual" /> Also email when a manual change starts</label>
-        </div>
-        <div class="settings-card">
-          <h3>Advance notice</h3>
-          <div class="num-unit"><input type="number" id="cm-lead" min="0" max="720" step="1" aria-label="Hours before" /> hours before each scheduled window</div>
-          <p class="hint">The change record is raised and emailed then (0 = when the window runs), listing the hosts and pending packages
-            at that moment. Hosts are checked again when the window runs.</p>
-        </div>
-        <div class="settings-card">
-          <h3>Approval</h3>
-          <label class="check"><input type="checkbox" id="cm-approval" /> Require approval before scheduled windows run</label>
-          <p class="hint check-hint">An admin approves each window in Updates → Change records; one not approved in time is skipped and
-            recorded. Manual changes count as approved by the admin who starts them. Any planned window can be rejected either way.</p>
-        </div>
-        <div class="form-row settings-actions">
-          <button type="submit" class="primary-btn">Save</button>
-          <button type="button" class="section-btn" id="cm-test">Send test email</button>
-          <span class="form-msg" id="cm-msg"></span>
-        </div>
-      </form>
+<?php pro_view('settings-changes', 'changes'); ?>
+    <section class="settings-panel admin-only hidden" data-panel="pro">
+      <div id="pro-status" class="settings-raw"></div>
     </section>
+<?php pro_view('settings-remote', 'remote'); ?>
 
     <section class="settings-panel admin-only hidden" data-panel="homeassistant">
       <h3>Home Assistant</h3>
@@ -742,24 +639,25 @@ $user = require_login_page();
   </div>
 </div>
 
-<script src="assets/app.js?v=54"></script>
+<script src="assets/app.js?v=55"></script>
 <script src="assets/topology.js?v=46"></script>
-<script src="assets/nas.js?v=47"></script>
+<script src="assets/nas.js?v=48"></script>
 <script src="assets/history.js?v=45"></script>
-<script src="assets/settings.js?v=55"></script>
-<script src="assets/updates.js?v=55"></script>
+<script src="assets/settings.js?v=56"></script>
+<script src="assets/updates.js?v=56"></script>
 <script src="assets/configbackup.js?v=45"></script>
 <script src="assets/portmap.js?v=45"></script>
-<script src="assets/reports.js?v=46"></script>
+<script src="assets/reports.js?v=47"></script>
 <script src="assets/wireless.js?v=45"></script>
 <script src="assets/devices.js?v=50"></script>
 <script src="assets/traffic.js?v=45"></script>
 <script src="assets/scans.js?v=48"></script>
-<script src="assets/vulns.js?v=2"></script>
 <script src="assets/services.js?v=1"></script>
 <script src="assets/network.js?v=3"></script>
-<script src="assets/flexlm.js?v=1"></script>
-<script src="assets/changes.js?v=1"></script>
-<script src="assets/help.js?v=3"></script>
+<?php foreach (['vulns' => 'vulns', 'flexlm' => 'flexlm', 'changes' => 'changes', 'remote' => 'remote'] as $js => $feature):
+    if (pro_feature($feature)): ?>
+<script src="pro/assets/<?= $js ?>.js?v=<?= htmlspecialchars(app_version(), ENT_QUOTES) ?>"></script>
+<?php endif; endforeach; ?>
+<script src="assets/help.js?v=4"></script>
 </body>
 </html>

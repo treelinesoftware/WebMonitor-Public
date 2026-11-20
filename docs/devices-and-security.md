@@ -48,6 +48,8 @@ device in its card's **Edit**; it shows on the card.
 
 ## Vulnerability scans
 
+Part of [WebMonitor Pro](pro.md).
+
 The **Security** tab scans your devices and lists what it finds by severity
 (CVSS: Critical, High, Medium, Low, Info). **Start scan** scans everything, one
 subnet or one host. Scans run in the background; the page updates as they go.

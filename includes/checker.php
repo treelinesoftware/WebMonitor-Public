@@ -7,6 +7,7 @@ require_once __DIR__ . '/portmap.php';
 require_once __DIR__ . '/wireless.php';
 require_once __DIR__ . '/devicescan.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/pro.php';   // pro_host_extras(): WebMonitor Pro or a stand-in
 
 /**
  * Checks whether a host's IP address is reachable (TCP connect against a
@@ -124,9 +125,11 @@ function host_summaries(array $hosts): array {
     $scanned = device_card_summaries();
     $services = service_card_summaries();
     $groups = host_group_map();
-    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services, $groups) {
+    $pro = pro_host_extras($hosts);                       // WebMonitor Pro: e.g. remote access methods
+    return array_map(function ($host) use ($historyById, $agents, $topo, $nas, $vendors, $portStrips, $wifi, $scanned, $services, $groups, $pro) {
         $id = (int) $host['id'];
         return summarize_host($host, $historyById[$id]) + [
+            'remote' => $pro[$id]['remote'] ?? null,            // Pro: remote access methods for the card
             'groupIds' => $groups[$id] ?? [],                   // card groups (Settings -> Groups)
             'agent' => $agents[$id] ?? null,
             'nas' => $nas[$id] ?? null,                          // NAS health (SNMP) for the card

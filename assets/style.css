@@ -2127,3 +2127,43 @@ header .icon-btn.active { background: var(--accent-soft); border-color: var(--ac
 }
 .settings-card.scan-section { border: 1px solid var(--panel-border); padding: 16px 18px; background: var(--panel); }
 .settings-card.add-host { margin: 0; }
+
+/* ---- Settings -> WebMonitor Pro ---- */
+.pro-features { display: flex; flex-direction: column; gap: 8px; }
+.pro-feature {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px;
+  border: 1px solid var(--panel-border); border-radius: 10px; cursor: pointer;
+}
+.pro-feature.locked { cursor: default; }
+.pro-feature input { margin-top: 3px; accent-color: var(--accent); }
+.pro-feature > span:last-child { display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; }
+.pro-lock { font-size: 0.85rem; opacity: 0.7; }
+.pro-card h3::after {
+  content: 'PRO'; margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; letter-spacing: 0.05em;
+  vertical-align: 2px; color: #fff; background: var(--accent);
+}
+.settings-nav-label:has(+ [data-panel="pro"])::after { content: ' ✦'; color: var(--accent); }
+
+/* ---- Remote access (WebMonitor Pro) ---- */
+.remote-menu {
+  position: absolute; z-index: 30; min-width: 240px; max-width: 340px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.35));
+}
+.remote-item { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 7px; color: var(--text); text-decoration: none; }
+.remote-item:hover, .remote-item:focus-visible { background: var(--accent-soft); outline: none; }
+.remote-item > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.remote-item .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote-ico { width: 20px; text-align: center; }
+.remote-copy { margin: -2px 0 4px 40px; background: none; border: none; color: var(--accent); font: inherit; font-size: 0.78rem; cursor: pointer; padding: 0; }
+.remote-foot { border-top: 1px solid var(--panel-border); margin-top: 4px; padding: 6px 10px 2px; }
+.rm-apps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+.rm-app-row { display: grid; grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.4fr); gap: 8px; align-items: end; }
+@media (max-width: 600px) { .rm-app-row { grid-template-columns: 1fr; } }
+.remote-edit { display: flex; flex-direction: column; gap: 6px; }
+.remote-edit-row { display: grid; grid-template-columns: minmax(180px, 1.2fr) 90px minmax(120px, 1fr); gap: 8px; align-items: center; }
+.remote-edit-row .re-url { grid-column: 2 / -1; }
+.remote-edit-row input[type=number], .remote-edit-row input[type=text], .remote-edit-row input[type=url] {
+  background: var(--bg); border: 1px solid var(--panel-border); color: var(--text); padding: 6px 8px; border-radius: 7px; font: inherit; font-size: 0.85rem; min-width: 0;
+}
+@media (max-width: 600px) { .remote-edit-row { grid-template-columns: 1fr 80px; } .remote-edit-row .re-user, .remote-edit-row .re-url { grid-column: 1 / -1; } }
+.settings-form label.pro-feature { flex-direction: row; align-items: flex-start; color: var(--text); font-size: inherit; }

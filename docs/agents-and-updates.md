@@ -59,6 +59,8 @@ groups is turned off.
 
 ## Change management and audit log
 
+Part of [WebMonitor Pro](pro.md).
+
 Every update window, and every manual update, reboot, agent upgrade or
 service restart, gets a **change record** (CHG-000123) under
 **Updates → Change records**. It keeps:

@@ -2,7 +2,11 @@
 """Regenerates the embedded application files in the Rocky deployment scripts.
 
 rocky-install.sh and rocky-upgrade.sh are self-contained. Run this after
-changing any app file so both scripts match the repo:
+changing any app file so both scripts match the repo. They never include
+WebMonitor Pro. When the private WebMonitor-Pro repository is checked out as
+pro/ (ignored by this repository), rocky-install-pro.sh and
+rocky-upgrade-pro.sh are made alongside them with pro/ included; they are
+ignored too and never committed or published:
 
     python3 deploy/build-install-script.py
 
@@ -16,6 +20,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "deploy" / "rocky-install.sh"
 UPGRADE_SCRIPT = ROOT / "deploy" / "rocky-upgrade.sh"
+PRO_SCRIPT = ROOT / "deploy" / "rocky-install-pro.sh"
+PRO_UPGRADE_SCRIPT = ROOT / "deploy" / "rocky-upgrade-pro.sh"
+PRO_DIR = "pro/"
 EOF_MARK = "WEBMON_FILE_EOF"
 PASS_PLACEHOLDER = "__WEBMON_DB_PASS__"
 
@@ -36,10 +43,31 @@ def app_files() -> list[str]:
         ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
         cwd=ROOT, check=True, capture_output=True, text=True,
     ).stdout.split("\n")
-    files = [f for f in out if f and f not in EXCLUDE and not f.startswith(EXCLUDE_DIRS)]
+    files = [f for f in out if f and f not in EXCLUDE and not f.startswith(EXCLUDE_DIRS)
+             and (ROOT / f).is_file()]  # skips deletions not yet committed
     files.append("config.php")  # generated from config.example.php
     # Root files first, then each directory, alphabetically within each.
     return sorted(set(files), key=lambda f: ("/" in f, f))
+
+
+# Files in the Pro repository that are not part of the deployed app.
+PRO_EXCLUDE = {".gitignore", "README.md"}
+PRO_EXCLUDE_DIRS = ("deploy/", "tests/")
+
+
+def pro_files() -> list[str]:
+    """pro/ files to deploy (its tracked and new files, plus the untracked pro-key.php)."""
+    pro = ROOT / PRO_DIR
+    if not (pro / "pro.php").is_file():
+        return []
+    out = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=pro, check=True, capture_output=True, text=True,
+    ).stdout.split("\n")
+    files = [f for f in out if f and f not in PRO_EXCLUDE and not f.startswith(PRO_EXCLUDE_DIRS)]
+    if (pro / "pro-key.php").is_file():
+        files.append("pro-key.php")
+    return sorted({PRO_DIR + f for f in files}, key=lambda f: (f.count("/") > 1, f))
 
 
 def source_text(rel: str) -> str:
@@ -68,29 +96,43 @@ def block(rel: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def embed(script_path: Path, files: list[str], out_path: Path) -> None:
+    """Writes script_path's text to out_path with these files embedded."""
+    text = script_path.read_text()
+    if script_path == SCRIPT:
+        try:
+            head, rest = text.split(START, 1)
+            _, tail = rest.split(END, 1)
+        except ValueError:
+            sys.exit("Could not find the [4/6] section markers in rocky-install.sh")
+        body = 'mkdir -p "$APP_DIR"\n\n' + "\n".join(block(f) for f in files) + "\n"
+        out_path.write_text(head + START + body + END + tail)
+    else:
+        try:
+            head, rest = text.split(UPGRADE_START, 1)
+            _, tail = rest.split(UPGRADE_END, 1)
+        except ValueError:
+            sys.exit("Could not find the embedded file section markers in rocky-upgrade.sh")
+        files = [f for f in files if f != "config.php"]
+        body = "\n".join(block(f) for f in files) + "\n"
+        out_path.write_text(head + UPGRADE_START + body + UPGRADE_END + tail)
+    print(f"Embedded {len(files)} files into {out_path.relative_to(ROOT)}")
+
+
 def main() -> None:
-    script = SCRIPT.read_text()
-    try:
-        head, rest = script.split(START, 1)
-        _, tail = rest.split(END, 1)
-    except ValueError:
-        sys.exit("Could not find the [4/6] section markers in rocky-install.sh")
-
-    files = app_files()
-    body = 'mkdir -p "$APP_DIR"\n\n' + "\n".join(block(f) for f in files) + "\n"
-    SCRIPT.write_text(head + START + body + END + tail)
-    print(f"Embedded {len(files)} files into {SCRIPT.relative_to(ROOT)}")
-
-    upgrade = UPGRADE_SCRIPT.read_text()
-    try:
-        head, rest = upgrade.split(UPGRADE_START, 1)
-        _, tail = rest.split(UPGRADE_END, 1)
-    except ValueError:
-        sys.exit("Could not find the embedded file section markers in rocky-upgrade.sh")
-    upgrade_files = [f for f in files if f != "config.php"]
-    body = "\n".join(block(f) for f in upgrade_files) + "\n"
-    UPGRADE_SCRIPT.write_text(head + UPGRADE_START + body + UPGRADE_END + tail)
-    print(f"Embedded {len(upgrade_files)} files into {UPGRADE_SCRIPT.relative_to(ROOT)}")
+    # rocky-install.sh / rocky-upgrade.sh are published: never with WebMonitor Pro.
+    public = [f for f in app_files() if not f.startswith(PRO_DIR)]
+    embed(SCRIPT, public, SCRIPT)
+    embed(UPGRADE_SCRIPT, public, UPGRADE_SCRIPT)
+    pro = pro_files()
+    if not pro:
+        print("No pro/ checkout: the -pro scripts were not made.")
+        return
+    if PRO_DIR + "pro-key.php" not in pro:
+        print("Warning: pro/pro-key.php is missing (run bash pro/deploy/set-pro-password.sh); Pro can't be unlocked.")
+    for src, dst in ((SCRIPT, PRO_SCRIPT), (UPGRADE_SCRIPT, PRO_UPGRADE_SCRIPT)):
+        embed(src, public + pro, dst)
+        dst.chmod(0o755)
 
 
 if __name__ == "__main__":

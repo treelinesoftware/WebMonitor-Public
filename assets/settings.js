@@ -61,7 +61,9 @@ function showSettingsPanel(name) {
   if (name === 'subnets') loadSubnets();
   if (name === 'locations') loadLocations();
   if (name === 'groups') loadGroups();
-  if (name === 'changes') loadChangeSettings();   // changes.js
+  if (name === 'changes' && typeof loadChangeSettings === 'function') loadChangeSettings();   // changes.js (Pro)
+  if (name === 'remote' && typeof loadRemoteSettings === 'function') loadRemoteSettings();     // remote.js (Pro)
+  if (name === 'pro') renderProPanel();
   if (name === 'homeassistant') loadHomeAssistant();
 }
 
@@ -447,7 +449,7 @@ function renderAlertSettings(st) {
     ${chk('as-failed', 'Failed services', st.alert_failed_services)}
     ${chk('as-av', 'Antivirus off, out of date, or missing on Windows', st.alert_antivirus)}
     ${chk('as-services', 'Monitored services down, or certificates expiring (Services tab)', st.alert_services)}
-    ${chk('as-flexlm', 'FlexLM licence servers down, licences all in use, or expiring (Licences tab)', st.alert_flexlm)}
+    ${proOn('flexlm') ? chk('as-flexlm', 'FlexLM licence servers down, licences all in use, or expiring (Licences tab)', st.alert_flexlm) : ''}
     ${chk('as-config', 'Switch configuration changes (found by configuration backups)', st.alert_config_changes)}
     ${chk('as-resolved', 'Also notify when a problem is resolved', st.notify_resolved)}
     <div class="form-row"><button type="submit" class="primary-btn">Save</button><span class="form-msg" id="alert-settings-msg"></span></div>`;
@@ -456,7 +458,7 @@ function renderAlertSettings(st) {
 alertSettingsForm.addEventListener('submit', async e => {
   e.preventDefault();
   const n = id => +document.getElementById(id).value;
-  const b = id => document.getElementById(id).checked;
+  const b = id => document.getElementById(id)?.checked ?? undefined;   // undefined: not shown, left as it is
   const msg = () => document.getElementById('alert-settings-msg');
   try {
     const data = await jsonApi('api/notifications.php?what=settings', 'PUT', {
@@ -900,3 +902,85 @@ document.getElementById('ha-unlink').addEventListener('click', () => {
     haRequest('PUT', 'api/homeassistant.php', { token: '' }, 'Link removed');
   }
 });
+
+// ---- WebMonitor Pro ----
+// Free version: what Pro adds. Installed but locked: the unlock form.
+// Unlocked: switch each Pro feature on or off. Changes reload the page,
+// since Pro features add tabs and sections.
+
+async function renderProPanel() {
+  const box = document.getElementById('pro-status');
+  let st;
+  try { st = await jsonApi('api/pro.php', 'GET'); }
+  catch (err) { box.innerHTML = `<p class="details-error">${escapeHtml(err.message)}</p>`; return; }
+  const list = Object.entries(st.catalog).map(([k, f]) => `
+    <label class="pro-feature ${st.unlocked ? '' : 'locked'}">
+      ${st.unlocked ? `<input type="checkbox" data-pro-feature="${k}" ${st.features[k] ? 'checked' : ''} />` : '<span class="pro-lock" aria-hidden="true">🔒</span>'}
+      <span><strong>${escapeHtml(f.label)}</strong><span class="hint">${escapeHtml(f.desc)}</span></span>
+    </label>`).join('');
+  if (!st.available) {
+    box.innerHTML = `<div class="settings-card pro-card">
+        <h3>WebMonitor Pro</h3>
+        <p class="hint">Pro adds these features to WebMonitor. It isn't installed on this server.</p>
+        <div class="pro-features">${list}</div>
+        <p class="hint">Get WebMonitor Pro from <a href="https://treelinesoftware.ca" target="_blank" rel="noopener">treelinesoftware.ca</a>.</p>
+      </div>`;
+    return;
+  }
+  if (!st.unlocked) {
+    box.innerHTML = `<div class="settings-card pro-card">
+        <h3>Unlock WebMonitor Pro</h3>
+        <p class="hint">Enter the Pro password you received with your purchase.</p>
+        ${st.passwordSet ? `<form id="pro-unlock" class="settings-form inline">
+          <input type="password" id="pro-password" autocomplete="off" placeholder="Pro password" required />
+          <button type="submit" class="primary-btn">Unlock</button>
+          <span class="form-msg" id="pro-msg"></span>
+        </form>` : '<p class="warn-text small">No Pro password has been set on this server yet.</p>'}
+      </div>
+      <div class="settings-card"><h3>Included</h3><div class="pro-features">${list}</div></div>`;
+    document.getElementById('pro-unlock')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const msg = document.getElementById('pro-msg');
+      setMsg(msg, 'Checking…');
+      try {
+        await jsonApi('api/pro.php?action=unlock', 'POST', { password: document.getElementById('pro-password').value });
+        reloadToSettings('pro');
+      } catch (err) {
+        setMsg(msg, err.message, false);
+        document.getElementById('pro-password').select();
+      }
+    });
+    return;
+  }
+  box.innerHTML = `<div class="settings-card pro-card">
+      <h3>Pro is unlocked</h3>
+      <p class="hint">Unlocked${st.unlockedBy ? ` by ${escapeHtml(st.unlockedBy)}` : ''}${st.unlockedAt ? ` on ${escapeHtml(new Date(st.unlockedAt).toLocaleDateString())}` : ''}.
+        Turn off any feature you don't use; its tabs and settings disappear and its data is kept.</p>
+      <div class="pro-features">${list}</div>
+      <div class="form-row">
+        <button type="button" class="primary-btn" id="pro-save">Save</button>
+        <button type="button" class="section-btn" id="pro-lock">Lock Pro</button>
+        <span class="form-msg" id="pro-msg"></span>
+      </div>
+    </div>`;
+  document.getElementById('pro-save').addEventListener('click', async () => {
+    const features = Object.fromEntries([...box.querySelectorAll('[data-pro-feature]')].map(cb => [cb.dataset.proFeature, cb.checked]));
+    try { await jsonApi('api/pro.php', 'PUT', { features }); reloadToSettings('pro'); }
+    catch (err) { setMsg(document.getElementById('pro-msg'), err.message, false); }
+  });
+  document.getElementById('pro-lock').addEventListener('click', async () => {
+    if (!confirm('Lock WebMonitor Pro? Pro tabs and settings disappear until it is unlocked again with the Pro password. Nothing is deleted.')) return;
+    try { await jsonApi('api/pro.php?action=lock', 'POST', {}); reloadToSettings('pro'); }
+    catch (err) { setMsg(document.getElementById('pro-msg'), err.message, false); }
+  });
+}
+
+/** Reloads the page (Pro changes add or remove tabs) and reopens Settings at a panel. */
+function reloadToSettings(panel) {
+  try { sessionStorage.setItem('wm-open-settings', panel); } catch (e) { /* opens on the dashboard instead */ }
+  location.reload();
+}
+try {
+  const reopen = sessionStorage.getItem('wm-open-settings');
+  if (reopen) { sessionStorage.removeItem('wm-open-settings'); openSettings(reopen); }
+} catch (e) { /* no storage */ }

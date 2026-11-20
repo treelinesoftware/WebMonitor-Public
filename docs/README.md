@@ -20,5 +20,6 @@ updates through a small agent. Everything runs on your own server.
 - [Alerts and services](alerts-and-services.md): notifications and service checks
 - [Agents and updates](agents-and-updates.md): the agent, installing updates, update windows
 - [Devices and security](devices-and-security.md): device inventory, scans, Home Assistant, vulnerability scans
-- [FlexLM licences](flexlm.md): licence servers, licences in use, who has them, expiry alerts
+- [FlexLM licences](flexlm.md) (Pro): licence servers, licences in use, who has them, expiry alerts
+- [WebMonitor Pro](pro.md): what Pro adds, unlocking it, remote access
 - [Troubleshooting](troubleshooting.md)

@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/audit.php';
+require_once __DIR__ . '/pro.php';   // audit log (WebMonitor Pro) or its stand-in
 
 /**
  * Session-based login for the dashboard and its API.

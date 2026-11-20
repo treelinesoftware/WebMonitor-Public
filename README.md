@@ -19,7 +19,7 @@ dashboard (the **?** button at the top right).
 - Service monitoring: web pages (status, keyword, response time, certificate
   expiry), TCP ports and DNS lookups checked from the server with no agent, plus
   systemd units and Windows services watched by the agent, with a Restart button.
-- FlexLM licence servers: whether each licence server and vendor daemon is up,
+- FlexLM licence servers (Pro): whether each licence server and vendor daemon is up,
   licences in use per feature, expiry dates, who has each licence checked out,
   checkout history and usage over time (needs Flexera's `lmutil`, which you
   supply).
@@ -51,13 +51,18 @@ dashboard (the **?** button at the top right).
 - Deep device scans (open ports, web titles, UPnP, mDNS, NetBIOS, SNMP and brand
   info pages), daily or on demand, with optional auto-naming.
 - Home Assistant link (read-only) for device names, rooms, makers and models.
-- Vulnerability scans with nmap, built-in checks and CVE lookups (NVD, OSV).
+- Vulnerability scans with nmap, built-in checks and CVE lookups (NVD, OSV) (Pro).
 
 **Updates (agent)**
 - A lightweight agent for Linux (Python, standard library only) and Windows
   (PowerShell) reports metrics, inventory, pending updates and workloads.
 - Install updates or reboot from the dashboard, or on recurring update windows.
   The agent only runs a fixed set of job types and only connects out.
+
+**WebMonitor Pro** (add-on, see [docs/pro.md](docs/pro.md))
+- Change records, change emails, optional approval and a tamper-evident audit log.
+- Remote buttons on host cards: Remote Desktop, SSH, VNC and the device's web page.
+- Vulnerability scanning, FlexLM licence-server monitoring and update schedules by group.
 
 **Access**
 - Logins with Admin and Viewer roles, bcrypt passwords, CSRF protection and
@@ -169,7 +174,6 @@ Tests that need no server:
 ```sh
 php deploy/test-device-identity.php
 php deploy/test-homeassistant.php
-php deploy/test-flexlm.php
 node deploy/test-scans.js
 python3 deploy/test-upgrade.py
 ```
@@ -193,4 +197,4 @@ deploy/       Rocky Linux install/upgrade scripts, their builder, and tests
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). WebMonitor Pro is a separate add-on and is not part of this repository.

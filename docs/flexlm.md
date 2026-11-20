@@ -1,5 +1,7 @@
 # FlexLM licences
 
+Part of [WebMonitor Pro](pro.md).
+
 The **Licences** tab watches FlexLM (FlexNet Publisher) licence servers: the
 `lmgrd` licence servers that hand out licences for engineering and design
 software. For each server it shows:

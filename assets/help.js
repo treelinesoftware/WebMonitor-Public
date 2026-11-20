@@ -15,10 +15,11 @@ const HELP_TOPICS = [
   { id: 'alerts-and-services', title: 'Alerts and services', group: 'Use' },
   { id: 'agents-and-updates', title: 'Agents and updates', group: 'Use' },
   { id: 'devices-and-security', title: 'Devices and security', group: 'Use' },
-  { id: 'flexlm', title: 'FlexLM licences', group: 'Use' },
+  { id: 'flexlm', title: 'FlexLM licences (Pro)', group: 'Use' },
+  { id: 'pro', title: 'WebMonitor Pro', group: 'Use' },
   { id: 'troubleshooting', title: 'Troubleshooting', group: 'Help' },
 ];
-const HELP_VERSION = 3;   // bump with docs changes so browsers fetch them again
+const HELP_VERSION = 4;   // bump with docs changes so browsers fetch them again
 const helpCache = {};
 let helpTopic = 'README';
 let helpReady = false;

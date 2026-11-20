@@ -65,6 +65,12 @@ function statusBadge(host) {
 const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
 // Admin-only controls are hidden for viewers; the server enforces it too.
 const IS_ADMIN = document.querySelector('meta[name="user-role"]').content === 'admin';
+// WebMonitor Pro: {available, unlocked, features: {changes, remote, vulns, flexlm, group_schedules}}.
+let PRO = { available: false, unlocked: false, features: {} };
+try { PRO = JSON.parse(document.querySelector('meta[name="pro"]')?.content || '') || PRO; } catch (e) { /* free version */ }
+const proOn = name => !!(PRO.features && PRO.features[name]);
+// Hooks Pro scripts fill in (cardActions, cardBind, hostEditor, hostEditorSave).
+window.WM_PRO = window.WM_PRO || {};
 
 const headerClock = document.getElementById('header-clock');
 const clockFormatter = new Intl.DateTimeFormat([], {
@@ -555,11 +561,13 @@ function renderCard(host) {
       <button class="card-btn ping-btn" type="button" title="Check reachability now (TCP ports 80, 443, 22, 445, 3389)">Ping</button>
       <button class="card-btn details-btn" type="button" title="Show server details collected over SNMP">Details</button>
       ${IS_ADMIN ? '<button class="card-btn asset-scan-btn" type="button" title="Request an asset scan">Scan now</button>' : ''}
+      ${WM_PRO.cardActions ? WM_PRO.cardActions(host) : ''}
       <span class="ping-result"></span>
     </div>
   `;
 
   renderPingState(card, host.id);
+  if (WM_PRO.cardBind) WM_PRO.cardBind(card, host);   // Pro: remote access menu
 
   card.querySelector('.ping-btn').addEventListener('click', e => {
     e.stopPropagation();
