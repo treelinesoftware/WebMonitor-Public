@@ -19,7 +19,7 @@ const HELP_TOPICS = [
   { id: 'pro', title: 'WebMonitor Pro', group: 'Use' },
   { id: 'troubleshooting', title: 'Troubleshooting', group: 'Help' },
 ];
-const HELP_VERSION = 4;   // bump with docs changes so browsers fetch them again
+const HELP_VERSION = 5;   // bump with docs changes so browsers fetch them again
 const helpCache = {};
 let helpTopic = 'README';
 let helpReady = false;

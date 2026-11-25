@@ -424,7 +424,7 @@ $user = require_login_page();
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=60" />
+<link rel="stylesheet" href="assets/style.css?v=61" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -558,6 +558,7 @@ $user = require_login_page();
     <div class="report-head">
       <div><h2 class="report-title">Help</h2><div class="muted small">Guides for installing, setting up and using WebMonitor</div></div>
       <div class="section-actions no-print">
+        <a class="section-btn help-tour" href="docs/walkthrough.html" target="_blank" rel="noopener">▶ Take the tour</a>
         <input type="search" id="help-search" class="help-search" placeholder="Search help…" aria-label="Search help" />
       </div>
     </div>
@@ -1062,7 +1063,7 @@ $user = require_login_page();
     if (pro_feature($feature)): ?>
 <script src="pro/assets/<?= $js ?>.js?v=<?= htmlspecialchars(app_version(), ENT_QUOTES) ?>"></script>
 <?php endif; endforeach; ?>
-<script src="assets/help.js?v=4"></script>
+<script src="assets/help.js?v=5"></script>
 </body>
 </html>
 WEBMON_FILE_EOF
@@ -8456,7 +8457,7 @@ const HELP_TOPICS = [
   { id: 'pro', title: 'WebMonitor Pro', group: 'Use' },
   { id: 'troubleshooting', title: 'Troubleshooting', group: 'Help' },
 ];
-const HELP_VERSION = 4;   // bump with docs changes so browsers fetch them again
+const HELP_VERSION = 5;   // bump with docs changes so browsers fetch them again
 const helpCache = {};
 let helpTopic = 'README';
 let helpReady = false;
@@ -14019,6 +14020,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-sp
 
 /* ---- Help ---- */
 header .icon-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.help-tour { text-decoration: none; white-space: nowrap; }
 .help-search { min-width: 240px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--panel-border); background: var(--panel); color: var(--text); font: inherit; }
 .help-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 10px; }
 .help-nav { position: sticky; top: 76px; display: flex; flex-direction: column; gap: 2px; padding: 12px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; }
@@ -16548,7 +16550,8 @@ cat > "$APP_DIR/docs/getting-started.md" <<'WEBMON_FILE_EOF'
 # Getting started
 
 You've installed WebMonitor and signed in as `admin`. These steps take you from
-an empty dashboard to a monitored network. Settings are under the gear icon at
+an empty dashboard to a monitored network. New to the dashboard? **Take the tour** (top of
+the Help screen) plays a short animated walkthrough of every tab first. Settings are under the gear icon at
 the top right; most of them need an Admin login.
 
 ## 1. Change the admin password
@@ -17534,6 +17537,1133 @@ Use `compose.yaml` on a Linux host. See
 With host networking, the app opens its ports on the host. Change
 `WEBMON_HTTPS_PORT`, `WEBMON_HTTP_PORT`, `WEBMON_FLOW_PORT` or `WEBMON_DB_PORT`
 in `.env`, then `docker compose up -d`.
+WEBMON_FILE_EOF
+
+mkdir -p "$(dirname "$APP_DIR/docs/walkthrough.html")"
+cat > "$APP_DIR/docs/walkthrough.html" <<'WEBMON_FILE_EOF'
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WebMonitor Tour</title>
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+<style>
+/* ---------- Page (follows the system theme) ---------- */
+:root {
+  --pg-bg: #0b0f19; --pg-panel: #131a2a; --pg-border: #243049; --pg-text: #e7ecf7;
+  --pg-muted: #8a94ab; --pg-accent: #5b8cff; --pg-accent-soft: rgba(91,140,255,.14);
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --pg-bg: #eef1f7; --pg-panel: #ffffff; --pg-border: #d8deea; --pg-text: #1a2233;
+    --pg-muted: #5d687e; --pg-accent: #3366e0; --pg-accent-soft: rgba(51,102,224,.1);
+    color-scheme: light;
+  }
+}
+:root[data-theme="dark"] {
+  --pg-bg: #0b0f19; --pg-panel: #131a2a; --pg-border: #243049; --pg-text: #e7ecf7;
+  --pg-muted: #8a94ab; --pg-accent: #5b8cff; --pg-accent-soft: rgba(91,140,255,.14);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--pg-bg); color: var(--pg-text); min-height: 100vh; }
+.tour { max-width: 1480px; margin: 0 auto; padding: 20px 16px 32px; }
+.tour-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.tour-head svg { width: 34px; height: 34px; }
+.tour-head svg rect { fill: var(--pg-accent); }
+.tour-head svg polyline { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.tour-head h1 { font-size: 1.35rem; margin: 0; }
+.tour-head .sub { color: var(--pg-muted); font-size: .9rem; }
+.tour-head .spacer { flex: 1; }
+.tour-head a { color: var(--pg-accent); text-decoration: none; font-weight: 600; font-size: .9rem; }
+
+.tour-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+@media (max-width: 1080px) { .tour-body { grid-template-columns: 1fr; } }
+
+/* Browser frame that holds the scaled app */
+.frame { background: var(--pg-panel); border: 1px solid var(--pg-border); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,.28); }
+.frame-bar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--pg-border); }
+.frame-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--pg-border); display: inline-block; }
+.frame-bar i:nth-child(1) { background: #ef5f57; } .frame-bar i:nth-child(2) { background: #f5bd2f; } .frame-bar i:nth-child(3) { background: #29c840; }
+.frame-url { flex: 1; margin-left: 10px; background: var(--pg-bg); border-radius: 7px; padding: 5px 12px; font-size: .8rem;
+  color: var(--pg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frame-url b { color: var(--pg-text); font-weight: 500; }
+.viewport { position: relative; width: 100%; aspect-ratio: 1120 / 680; overflow: hidden; background: #0f1420; }
+#stage { position: absolute; left: 0; top: 0; width: 1120px; height: 680px; transform-origin: 0 0; }
+
+/* Narration panel */
+.side { background: var(--pg-panel); border: 1px solid var(--pg-border); border-radius: 14px; padding: 18px; position: sticky; top: 16px; }
+.step-kicker { color: var(--pg-accent); font-size: .76rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.step-title { font-size: 1.3rem; margin: 6px 0 8px; line-height: 1.25; }
+.step-text { color: var(--pg-muted); line-height: 1.55; font-size: .95rem; margin: 0 0 10px; min-height: 4.6em; }
+.step-points { margin: 0 0 14px; padding: 0; list-style: none; }
+.step-points li { position: relative; padding: 5px 0 5px 22px; font-size: .9rem; line-height: 1.4; opacity: .35; transition: opacity .35s; }
+.step-points li.on { opacity: 1; }
+.step-points li::before { content: ""; position: absolute; left: 3px; top: 11px; width: 8px; height: 8px; border-radius: 50%;
+  border: 2px solid var(--pg-accent); }
+.step-points li.on::before { background: var(--pg-accent); }
+.step-where { font-size: .8rem; color: var(--pg-muted); border-top: 1px solid var(--pg-border); padding-top: 10px; margin-bottom: 14px; }
+.step-where code { background: var(--pg-accent-soft); color: var(--pg-text); padding: 1px 6px; border-radius: 5px; font-size: .78rem; }
+
+.controls { display: flex; gap: 8px; align-items: center; }
+.controls button { background: var(--pg-bg); color: var(--pg-text); border: 1px solid var(--pg-border); border-radius: 9px;
+  padding: 8px 12px; font: inherit; font-size: .88rem; font-weight: 600; cursor: pointer; }
+.controls button:hover { border-color: var(--pg-accent); }
+.controls button.primary { background: var(--pg-accent); border-color: var(--pg-accent); color: #fff; flex: 1; }
+.controls button:disabled { opacity: .4; cursor: default; }
+.progress { height: 4px; background: var(--pg-border); border-radius: 4px; margin: 14px 0 12px; overflow: hidden; }
+.progress div { height: 100%; width: 0; background: var(--pg-accent); transition: width .2s linear; }
+
+.chapters { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 2px; }
+.chapters button { width: 100%; text-align: left; background: none; border: 0; color: var(--pg-muted); font: inherit; font-size: .86rem;
+  padding: 6px 8px; border-radius: 7px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.chapters button:hover { background: var(--pg-accent-soft); color: var(--pg-text); }
+.chapters button.active { background: var(--pg-accent-soft); color: var(--pg-text); font-weight: 600; }
+.chapters .n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 700;
+  border: 1px solid var(--pg-border); flex-shrink: 0; }
+.chapters button.done .n { background: var(--pg-accent); border-color: var(--pg-accent); color: #fff; }
+.chapters button.active .n { border-color: var(--pg-accent); color: var(--pg-accent); }
+.chapters .pro { margin-left: auto; font-size: .66rem; font-weight: 700; color: #b98cff; border: 1px solid #b98cff66; border-radius: 4px; padding: 0 4px; }
+.kbd-hint { color: var(--pg-muted); font-size: .75rem; margin-top: 12px; }
+.kbd-hint kbd { border: 1px solid var(--pg-border); border-radius: 4px; padding: 0 5px; font-family: inherit; }
+
+/* ---------- The app mock (always WebMonitor's dark theme) ---------- */
+.wm { --bg: #0f1420; --panel: #161d2e; --panel-border: #263049; --text: #e7ecf7; --muted: #8a94ab; --up: #33d17a; --down: #ef5350;
+  --pending: #f0ad4e; --accent: #5b8cff; --track: #2a3348; --accent-soft: rgba(91,140,255,.12); --pro: #b98cff;
+  position: absolute; inset: 0; background: var(--bg); color: var(--text); font-size: 13px; overflow: hidden; color-scheme: dark; }
+.wm .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.wm .muted { color: var(--muted); }
+.wm-bar { height: 52px; display: flex; align-items: center; gap: 18px; padding: 0 20px; background: var(--panel); border-bottom: 1px solid var(--panel-border); }
+.wm-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+.wm-brand svg { width: 26px; height: 26px; } .wm-brand rect { fill: var(--accent); }
+.wm-brand polyline { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.wm-nav { display: flex; gap: 2px; }
+.wm-nav span { padding: 7px 9px; white-space: nowrap; border-radius: 8px; color: var(--muted); font-weight: 600; transition: background .2s, color .2s; }
+.wm-nav span.active { background: var(--accent-soft); color: var(--text); }
+.wm-nav .cnt { margin-left: 5px; font-size: 11px; color: var(--accent); }
+.wm-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.wm-pill { border: 1px solid var(--panel-border); border-radius: 20px; padding: 4px 10px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.wm-right > span { white-space: nowrap; }
+.wm-pill.busy { color: var(--accent); border-color: var(--accent); }
+.wm-av { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; font-weight: 700; color: #fff; }
+.wm-role { font-size: 10px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.wm-icon { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; border: 1px solid transparent; }
+.wm-icon svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wm-main { position: absolute; top: 52px; left: 0; right: 0; bottom: 0; padding: 16px 22px; overflow: hidden; }
+
+.wm-alerts { background: rgba(239,83,80,.12); border: 1px solid var(--down); color: var(--text); border-radius: 10px; padding: 9px 12px;
+  margin-bottom: 12px; display: flex; gap: 10px; align-items: center; max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0;
+  margin-bottom: 0; overflow: hidden; transition: all .45s ease; }
+.wm-alerts.show { max-height: 60px; opacity: 1; padding: 9px 12px; margin-bottom: 12px; }
+.wm-alerts b { color: var(--down); }
+
+.kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; transition: border-color .3s; }
+.kpi-label { color: var(--muted); font-size: 11px; font-weight: 600; }
+.kpi-value { font-size: 22px; font-weight: 700; }
+.kpi-sub { color: var(--muted); font-size: 11px; }
+.kpi.good .kpi-value { color: var(--up); } .kpi.bad { border-color: var(--down); } .kpi.bad .kpi-value { color: var(--down); }
+.kpi.warn .kpi-value { color: var(--pending); }
+
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.tbtn { background: var(--panel); border: 1px solid var(--panel-border); color: var(--muted); padding: 6px 12px; border-radius: 8px; font-weight: 600; font-size: 12px; transition: all .2s; }
+.tbtn.active { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.tbtn .c { margin-left: 5px; font-size: 11px; color: var(--muted); } .tbtn.active .c { color: var(--accent); }
+.search { flex: 1; max-width: 300px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 8px; padding: 6px 10px; color: var(--muted); }
+.grp-title { color: var(--muted); font-weight: 600; font-size: 12px; margin: 4px 0 8px; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+
+.card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 13px; padding: 12px; position: relative;
+  transition: transform .2s, border-color .3s, opacity .35s; }
+.card.hl { border-color: var(--accent); transform: translateY(-2px); }
+.card.is-down { border-color: var(--down); }
+.card-top { display: flex; align-items: center; gap: 9px; }
+.card-ico { font-size: 22px; line-height: 1; }
+.card-title { flex: 1; min-width: 0; }
+.card-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-ip { color: var(--muted); font-size: 11px; margin-top: 2px; display: flex; gap: 5px; align-items: center; }
+.chip { font-size: 10px; border: 1px solid var(--panel-border); border-radius: 4px; padding: 0 4px; color: var(--muted); }
+.chip.new { color: var(--accent); border-color: var(--accent); }
+.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--up); box-shadow: 0 0 8px var(--up); flex-shrink: 0; transition: all .3s; }
+.dot.down { background: var(--down); box-shadow: 0 0 8px var(--down); animation: blink 1s infinite; }
+.dot.pending { background: var(--pending); box-shadow: 0 0 8px var(--pending); }
+@keyframes blink { 50% { opacity: .35; } }
+.card-agent { font-size: 11px; color: var(--up); margin-top: 8px; }
+.card-agent.warn { color: var(--pending); }
+.card-agent::before { content: "● "; }
+.ubar { display: flex; gap: 2px; height: 20px; margin-top: 9px; }
+.ubar i { flex: 1; background: var(--up); border-radius: 2px; transition: background .3s; }
+.ubar i.d { background: var(--down); }
+.card-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 7px; }
+.card-foot b { color: var(--text); }
+.card-acts { display: flex; gap: 5px; margin-top: 9px; }
+.cbtn { border: 1px solid var(--panel-border); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--muted); background: transparent; transition: all .2s; }
+.cbtn.pro { color: var(--pro); border-color: rgba(185,140,255,.45); }
+.cbtn.hot { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.pop-in { animation: popin .45s cubic-bezier(.2,1.4,.4,1) both; }
+@keyframes popin { from { opacity: 0; transform: scale(.85) translateY(8px); } }
+.fade-in { animation: fadein .4s ease both; }
+@keyframes fadein { from { opacity: 0; transform: translateY(6px); } }
+
+.panel { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 14px; }
+.head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.head h2 { font-size: 17px; margin: 0; }
+.btn { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 7px 13px; font-weight: 600; font-size: 12px; transition: filter .2s, transform .1s; }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--panel-border); }
+.btn.green { background: var(--up); color: #0f1420; }
+.pressed { transform: scale(.94); filter: brightness(1.2); }
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th { text-align: left; color: var(--muted); font-size: 11px; font-weight: 600; padding: 7px 8px; border-bottom: 1px solid var(--panel-border); }
+.tbl td { padding: 8px; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
+.badge { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; }
+.badge.ok { background: rgba(51,209,122,.15); color: var(--up); }
+.badge.bad { background: rgba(239,83,80,.15); color: var(--down); }
+.badge.warn { background: rgba(240,173,78,.15); color: var(--pending); }
+.badge.info { background: var(--accent-soft); color: var(--accent); }
+
+/* Modal */
+.mback { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; opacity: 0;
+  pointer-events: none; transition: opacity .3s; z-index: 20; }
+.mback.show { opacity: 1; }
+.modal { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; width: 820px; max-height: 590px; overflow: hidden;
+  transform: translateY(16px) scale(.98); transition: transform .35s ease; }
+.mback.show .modal { transform: none; }
+.modal-head { padding: 14px 18px; border-bottom: 1px solid var(--panel-border); display: flex; align-items: center; gap: 10px; }
+.modal-head h3 { margin: 0; font-size: 16px; flex: 1; }
+.modal-body { padding: 16px 18px; }
+.settings { display: grid; grid-template-columns: 170px 1fr; min-height: 420px; }
+.snav { border-right: 1px solid var(--panel-border); padding: 10px; display: grid; gap: 2px; align-content: start; }
+.snav span { padding: 6px 10px; border-radius: 7px; color: var(--muted); font-weight: 600; font-size: 12px; transition: all .2s; }
+.snav span.active { background: var(--accent-soft); color: var(--text); }
+.field { display: grid; gap: 4px; margin-bottom: 10px; }
+.field label { font-size: 11px; color: var(--muted); font-weight: 600; }
+.input { background: var(--bg); border: 1px solid var(--panel-border); border-radius: 8px; padding: 7px 10px; min-height: 32px; font-size: 13px; transition: border-color .2s; }
+.input.focus { border-color: var(--accent); }
+.input .caret { display: inline-block; width: 1px; height: 14px; background: var(--text); vertical-align: -2px; animation: blink 1s infinite; }
+.toggle { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; }
+.sw { width: 30px; height: 17px; border-radius: 10px; background: var(--track); position: relative; transition: background .25s; flex-shrink: 0; }
+.sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left .25s; }
+.sw.on { background: var(--accent); } .sw.on::after { left: 15px; }
+
+/* Login */
+.login { position: absolute; inset: 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 30%, #1b2540, #0f1420 60%); z-index: 30; transition: opacity .5s; }
+.login.gone { opacity: 0; pointer-events: none; }
+.login-box { width: 340px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 16px; padding: 26px; }
+.login-box h2 { margin: 10px 0 2px; font-size: 20px; }
+
+/* Charts & bits */
+.gauge-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.meter { height: 8px; background: var(--track); border-radius: 6px; overflow: hidden; margin-top: 6px; }
+.meter i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 6px; transition: width 1.2s ease; }
+.meter i.warn { background: var(--pending); }
+.draw path.line { stroke-dasharray: 1200; stroke-dashoffset: 1200; transition: stroke-dashoffset 2s ease; }
+.draw.go path.line { stroke-dashoffset: 0; }
+.draw path.area { opacity: 0; transition: opacity 1s ease 1s; } .draw.go path.area { opacity: 1; }
+.flow { stroke-dasharray: 6 8; animation: flow 1s linear infinite; }
+.flow.slow { animation-duration: 2.2s; } .flow.fast { animation-duration: .5s; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+.hbar { height: 16px; background: var(--accent); border-radius: 4px; width: 0; transition: width 1.1s ease; }
+.svc-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.jobbar { height: 6px; background: var(--track); border-radius: 4px; overflow: hidden; width: 120px; display: inline-block; vertical-align: middle; }
+.jobbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s linear; }
+.menu { position: absolute; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; padding: 5px; box-shadow: 0 12px 30px rgba(0,0,0,.4);
+  width: 190px; z-index: 5; opacity: 0; transform: translateY(-4px); transition: all .2s; }
+.menu.show { opacity: 1; transform: none; }
+.menu div { padding: 7px 10px; border-radius: 6px; font-size: 12px; display: flex; gap: 8px; }
+.menu div.hot { background: var(--accent-soft); }
+.phone { position: absolute; right: 26px; bottom: 22px; width: 250px; background: #05070c; border: 2px solid #2a3348; border-radius: 26px; padding: 34px 12px 18px;
+  transform: translateY(380px); transition: transform .6s cubic-bezier(.2,1.1,.4,1); z-index: 25; }
+.phone.show { transform: none; }
+.push { background: rgba(255,255,255,.1); border-radius: 13px; padding: 10px 11px; font-size: 11.5px; color: #e7ecf7; margin-bottom: 8px; opacity: 0; transform: translateY(-8px); transition: all .4s; }
+.push.show { opacity: 1; transform: none; }
+.push b { display: block; margin-bottom: 2px; }
+.check-list { display: grid; gap: 8px; }
+.check-list div { display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 10px; opacity: 0; transform: translateX(-10px); transition: all .4s; }
+.check-list div.show { opacity: 1; transform: none; }
+.check-list .tick { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--accent); display: grid; place-items: center; font-size: 11px; color: #fff; transition: background .3s; }
+.check-list div.done .tick { background: var(--accent); }
+
+/* Tour overlay: cursor, spotlight ring and callout */
+#cursor { position: absolute; left: 0; top: 0; width: 22px; height: 22px; z-index: 50; pointer-events: none; transition: transform .7s cubic-bezier(.45,.05,.3,1); }
+#cursor svg { width: 22px; height: 22px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+#cursor .ripple { position: absolute; left: -9px; top: -9px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #5b8cff; opacity: 0; }
+#cursor.click .ripple { animation: ripple .5s ease-out; }
+@keyframes ripple { from { opacity: 1; transform: scale(.4); } to { opacity: 0; transform: scale(2.2); } }
+#ring { position: absolute; z-index: 40; border: 2px solid #5b8cff; border-radius: 12px; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 0 4000px rgba(5,8,15,.45), 0 0 18px rgba(91,140,255,.6); transition: all .45s ease; }
+#ring.show { opacity: 1; }
+#callout { position: absolute; z-index: 45; max-width: 260px; background: #5b8cff; color: #fff; font-size: 13px; font-weight: 600; line-height: 1.35;
+  padding: 8px 12px; border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,.35); opacity: 0; transform: translateY(4px); transition: opacity .3s, transform .3s; pointer-events: none; }
+#callout.show { opacity: 1; transform: none; }
+.scene-fade { animation: scenefade .45s ease both; }
+@keyframes scenefade { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #cursor, #ring, .meter i, .hbar, .draw path.line { transition-duration: .01s !important; }
+  .flow, .dot.down, .pop-in, .fade-in { animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="tour">
+  <header class="tour-head">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="2" y="2" width="60" height="60" rx="14"/><polyline points="9,35 21,35 26,22 34,46 40,28 44,35 55,35"/></svg>
+    <div><h1>Welcome to WebMonitor</h1><div class="sub">A two-minute animated tour of the screens you'll use every day</div></div>
+    <div class="spacer"></div>
+    <a href="../#help=getting-started">Open the Getting started guide →</a>
+  </header>
+
+  <div class="tour-body">
+    <div class="frame">
+      <div class="frame-bar"><i></i><i></i><i></i><div class="frame-url">https://<b>monitor.local</b>/webmonitor/<span id="url-hash"></span></div></div>
+      <div class="viewport" id="viewport"><div id="stage" aria-hidden="true"></div></div>
+    </div>
+
+    <aside class="side" aria-live="polite">
+      <div class="step-kicker" id="kicker">Step 1 of 12</div>
+      <h2 class="step-title" id="title"></h2>
+      <p class="step-text" id="text"></p>
+      <ul class="step-points" id="points"></ul>
+      <div class="step-where" id="where"></div>
+      <div class="controls">
+        <button type="button" id="prev" aria-label="Previous step">← Back</button>
+        <button type="button" id="play" class="primary">Pause</button>
+        <button type="button" id="next" aria-label="Next step">Next →</button>
+      </div>
+      <div class="progress"><div id="bar"></div></div>
+      <ol class="chapters" id="chapters"></ol>
+      <div class="kbd-hint"><kbd>←</kbd> <kbd>→</kbd> step · <kbd>Space</kbd> pause · <kbd>R</kbd> replay step</div>
+    </aside>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   WebMonitor onboarding tour. Everything on screen is a mock built here
+   with made-up data; nothing talks to the server.
+   ===================================================================== */
+const W = 1120, H = 680;
+const stage = document.getElementById('stage');
+const viewport = document.getElementById('viewport');
+const $ = (sel, root = stage) => root.querySelector(sel);
+const $$ = (sel, root = stage) => [...root.querySelectorAll(sel)];
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function fit() { stage.style.transform = `scale(${viewport.clientWidth / W})`; }
+new ResizeObserver(fit).observe(viewport);
+
+/* ---------- Mock data ---------- */
+const HOSTS = [
+  { id: 'sw',  ico: '🔀', name: 'core-sw-01',     ip: '192.168.1.2',   os: 'IOS',  net: 1, ms: 1,  up: 100 },
+  { id: 'pve', ico: '🖥️', name: 'pve-01',         ip: '192.168.1.10',  os: 'Linux', net: 1, ms: 2, up: 100, agent: 'Agent · 3 updates', warn: true },
+  { id: 'dc',  ico: '🪟', name: 'dc-01',          ip: '192.168.1.11',  os: 'Win',  net: 1, ms: 2,  up: 99.9, agent: 'Agent · up to date' },
+  { id: 'nas', ico: '🗄️', name: 'nas-01',         ip: '192.168.1.20',  os: 'QTS',  net: 1, ms: 3,  up: 100 },
+  { id: 'ap',  ico: '📶', name: 'ap-lobby',       ip: '192.168.1.30',  os: '',     net: 1, ms: 4,  up: 100 },
+  { id: 'prn', ico: '🖨️', name: 'printer-2f',     ip: '192.168.1.40',  os: '',     net: 1, ms: 6,  up: 98.6 },
+  { id: 'cam', ico: '📷', name: 'cam-front-door', ip: '192.168.20.12', os: '',     net: 2, ms: 8,  up: 99.2 },
+  { id: 'tv',  ico: '📺', name: 'living-room-tv', ip: '192.168.20.31', os: '',     net: 2, ms: 11, up: 97.4 },
+];
+const NEW_HOSTS = [
+  { id: 'ps5', ico: '🎮', name: 'PlayStation 5',  ip: '192.168.20.44', os: '', net: 2, ms: 9, up: 100, isNew: true },
+  { id: 'spk', ico: '🔊', name: 'Kitchen speaker', ip: '192.168.20.51', os: '', net: 2, ms: 14, up: 100, isNew: true },
+  { id: 'ph',  ico: '📱', name: 'Unnamed',         ip: '192.168.20.67', os: '', net: 2, ms: 22, up: 100, isNew: true },
+];
+
+const NAV = ['Hosts', 'Services', 'Network', 'Updates', 'Reports', 'Scans', 'Security'];
+const NAV_COUNTS = { Services: '1', Updates: '2', Security: '3' };
+
+function cardHtml(h, extra = '') {
+  const bars = Array.from({ length: 30 }, (_, i) => `<i class="${h.dips && h.dips.includes(i) ? 'd' : ''}"></i>`).join('');
+  return `<div class="card ${extra}" data-host="${h.id}">
+    <div class="card-top"><span class="card-ico">${h.ico}</span>
+      <div class="card-title"><div class="card-name"${h.name === 'Unnamed' ? ' style="color:var(--muted);font-style:italic"' : ''}>${h.name}</div>
+        <div class="card-ip"><span class="mono">${h.ip}</span>${h.os ? `<span class="chip">${h.os}</span>` : ''}${h.isNew ? '<span class="chip new">New</span>' : ''}</div></div>
+      <span class="dot"></span></div>
+    ${h.agent ? `<div class="card-agent${h.warn ? ' warn' : ''}">${h.agent}</div>` : ''}
+    <div class="ubar">${bars}</div>
+    <div class="card-foot"><span>Checked just now · ${h.ms} ms</span><span><b>${h.up}%</b> uptime</span></div>
+    <div class="card-acts"><span class="cbtn">Ping</span><span class="cbtn">Details</span>${h.os === 'Win' || h.os === 'Linux' ? '<span class="cbtn pro rmt">Remote ▾</span>' : '<span class="cbtn">Scan now</span>'}</div>
+  </div>`;
+}
+
+function shell(active = 'Hosts') {
+  return `<div class="wm">
+    <div class="wm-bar">
+      <div class="wm-brand"><svg viewBox="0 0 64 64"><rect x="2" y="2" width="60" height="60" rx="14"/><polyline points="9,35 21,35 26,22 34,46 40,28 44,35 55,35"/></svg>WebMonitor</div>
+      <div class="wm-nav">${NAV.map(n => `<span data-nav="${n}" class="${n === active ? 'active' : ''}">${n}${NAV_COUNTS[n] ? `<span class="cnt">${NAV_COUNTS[n]}</span>` : ''}</span>`).join('')}</div>
+      <div class="wm-right">
+        <span class="wm-pill" id="pill">Scans · idle</span>
+        <span class="muted">09:41</span>
+        <span class="wm-av">A</span><span style="font-weight:600">admin<span class="wm-role">Admin</span></span>
+        <span class="wm-icon" id="help-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4.9c0 1.9-2.7 2.5-2.7 4.1"/><path d="M12 17.4h.01"/></svg></span>
+        <span class="wm-icon" id="gear"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>
+      </div>
+    </div>
+    <div class="wm-main" id="main"></div>
+    <div class="mback" id="mback"><div class="modal" id="modal"></div></div>
+  </div>`;
+}
+
+function kpisHtml(o = {}) {
+  const t = (k, label, v, sub, tone = '') => `<div class="kpi ${tone}" data-kpi="${k}"><span class="kpi-label">${label}</span><span class="kpi-value" data-count="${v}">${o.zero ? 0 : v}</span><span class="kpi-sub">${sub}</span></div>`;
+  return `<div class="kpis" id="kpis">
+    ${t('all', 'Monitored', o.total ?? 8, '2 with agent')}
+    ${t('up', 'Online', o.online ?? 8, '100% of active hosts', 'good')}
+    ${t('down', 'Down', o.down ?? 0, o.down ? 'needs attention' : 'all clear', o.down ? 'bad' : '')}
+    ${t('alerts', 'Active alerts', o.alerts ?? 0, o.alerts ? '1 critical' : 'none open', o.alerts ? 'bad' : '')}
+    ${t('updates', 'Pending updates', 2, 'hosts · 1 security', 'warn')}
+    ${t('vulns', 'Vulnerabilities', 3, '0 critical · 3 high', 'warn')}
+  </div>`;
+}
+
+function hostsHtml(list = HOSTS, o = {}) {
+  const sub1 = list.filter(h => h.net === 1), sub2 = list.filter(h => h.net === 2);
+  return `<div class="wm-alerts" id="alerts"><b>● Down</b> nas-01 (192.168.1.20) stopped answering 3 min ago <span class="muted" style="margin-left:auto">Alert sent by email and ntfy</span></div>
+    ${kpisHtml(o)}
+    <div class="tabs" id="subnet-tabs"><span class="tbtn active">All <span class="c">${list.length}</span></span><span class="tbtn">Servers <span class="c">${sub1.length}</span></span><span class="tbtn">IoT <span class="c">${sub2.length}</span></span></div>
+    <div class="toolbar"><span class="search">🔍 Search name, IP, maker, model…</span>
+      <span class="tbtn active" data-f="all">All <span class="c">${list.length}</span></span><span class="tbtn" data-f="up">Up <span class="c" id="c-up">${list.length}</span></span><span class="tbtn" data-f="down">Down <span class="c" id="c-down">0</span></span>
+      <span class="muted" style="margin-left:auto;font-size:11px">Group</span><span class="tbtn active">Subnet</span><span class="tbtn">Location</span><span class="tbtn">Group</span></div>
+    <div id="groups">
+      <div class="grp-title" data-grp="1">Servers · 192.168.1.0/24 <span style="font-weight:400">· ${sub1.length}</span></div>
+      <div class="grid" id="grid1">${sub1.map(h => cardHtml(h)).join('')}</div>
+      <div class="grp-title" data-grp="2">IoT · 192.168.20.0/24 <span style="font-weight:400">· ${sub2.length}</span></div>
+      <div class="grid" id="grid2">${sub2.map(h => cardHtml(h)).join('')}</div>
+    </div>`;
+}
+
+/* ---------- Animation engine ---------- */
+const CANCEL = Symbol('cancel');
+let gen = 0, paused = false;
+let cursorPos = { x: W * 0.55, y: H * 0.6 };
+
+function guard(g) { if (g !== gen) throw CANCEL; }
+function wait(ms, g) {
+  if (reduced) ms = Math.min(ms, 600);
+  return new Promise((resolve, reject) => {
+    let left = ms;
+    const tick = () => {
+      if (g !== gen) return reject(CANCEL);
+      if (!paused) left -= 50;
+      if (left <= 0) resolve(); else setTimeout(tick, 50);
+    };
+    setTimeout(tick, 50);
+  });
+}
+function rel(el) {
+  const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect(), k = s.width / W;
+  return { x: (r.left - s.left) / k, y: (r.top - s.top) / k, w: r.width / k, h: r.height / k };
+}
+function el(target) { return typeof target === 'string' ? $(target) : target; }
+
+function makeCtx(g) {
+  const cur = () => document.getElementById('cursor');
+  const ctx = {
+    wait: ms => wait(ms, g),
+    async move(target, dx = 0.5, dy = 0.5) {
+      guard(g);
+      const e = el(target); if (!e) return;
+      const r = rel(e);
+      cursorPos = { x: r.x + r.w * dx, y: r.y + r.h * dy };
+      cur().style.transform = `translate(${cursorPos.x}px, ${cursorPos.y}px)`;
+      await wait(750, g);
+    },
+    async click(target, dx, dy) {
+      const e = el(target);
+      await ctx.move(e, dx, dy);
+      const c = cur(); c.classList.remove('click'); void c.offsetWidth; c.classList.add('click');
+      if (e) { e.classList.add('pressed'); setTimeout(() => e.classList.remove('pressed'), 160); }
+      await wait(260, g);
+    },
+    async type(target, text, speed = 55) {
+      const e = el(target);
+      e.classList.add('focus');
+      for (let i = 1; i <= text.length; i++) {
+        guard(g);
+        e.innerHTML = `${text.slice(0, i).replace(/</g, '&lt;')}<span class="caret"></span>`;
+        await wait(speed, g);
+      }
+      await wait(200, g);
+      e.classList.remove('focus');
+      e.innerHTML = text.replace(/</g, '&lt;');
+    },
+    spot(target, text, place = 'below', pad = 6) {
+      guard(g);
+      const ring = document.getElementById('ring'), call = document.getElementById('callout');
+      const e = el(target);
+      if (!e) { ctx.unspot(); return; }
+      const r = rel(e);
+      Object.assign(ring.style, { left: `${r.x - pad}px`, top: `${r.y - pad}px`, width: `${r.w + pad * 2}px`, height: `${r.h + pad * 2}px` });
+      ring.classList.add('show');
+      if (text) {
+        call.textContent = text;
+        call.classList.remove('show');
+        call.style.left = '0px'; call.style.top = '0px';
+        const cw = Math.min(260, call.offsetWidth || 260), ch = call.offsetHeight || 40;
+        let x = r.x, y = r.y + r.h + pad + 10;
+        if (place === 'above') y = r.y - pad - 10 - ch;
+        if (place === 'right') { x = r.x + r.w + pad + 12; y = r.y; }
+        if (place === 'left') { x = r.x - pad - 12 - cw; y = r.y; }
+        x = Math.max(10, Math.min(W - cw - 10, x)); y = Math.max(10, Math.min(H - ch - 10, y));
+        call.style.left = `${x}px`; call.style.top = `${y}px`;
+        requestAnimationFrame(() => call.classList.add('show'));
+      } else call.classList.remove('show');
+    },
+    unspot() {
+      document.getElementById('ring').classList.remove('show');
+      document.getElementById('callout').classList.remove('show');
+    },
+    point(i) { $$('#points li', document).forEach((li, n) => li.classList.toggle('on', n <= i)); },
+    nav(name) { $$('[data-nav]').forEach(n => n.classList.toggle('active', n.dataset.nav === name)); document.getElementById('url-hash').textContent = name === 'Hosts' ? '' : '#' + name.toLowerCase(); },
+    openModal(html) { $('#modal').innerHTML = html; $('#mback').classList.add('show'); },
+    closeModal() { $('#mback').classList.remove('show'); },
+    countUp(root = stage) {
+      $$('[data-count]', root).forEach(k => {
+        const target = +k.dataset.count; let v = 0;
+        const step = () => { if (g !== gen) return; v = Math.min(target, v + Math.max(1, Math.ceil(target / 12))); k.textContent = v; if (v < target) setTimeout(step, 45); };
+        step();
+      });
+    },
+  };
+  return ctx;
+}
+
+/* ---------- Scenes ---------- */
+const SCENES = [
+  {
+    title: 'Sign in',
+    text: 'Open WebMonitor in your browser and sign in. The first admin password is shown at the end of the install; change it straight away.',
+    points: ['Use the address your admin gave you', 'Admins can change settings; Viewers can look but not change', 'Change your password under Settings → Account'],
+    where: 'Address: <code>https://&lt;server&gt;/webmonitor/</code>',
+    build: () => shell() + `<div class="login" id="login"><div class="login-box">
+        <div class="wm-brand"><svg viewBox="0 0 64 64"><rect x="2" y="2" width="60" height="60" rx="14"/><polyline points="9,35 21,35 26,22 34,46 40,28 44,35 55,35"/></svg></div>
+        <h2>WebMonitor</h2><div class="muted" style="margin-bottom:18px">Sign in to continue</div>
+        <div class="field"><label>Username</label><div class="input" id="lu"></div></div>
+        <div class="field"><label>Password</label><div class="input" id="lp"></div></div>
+        <div class="btn" id="lbtn" style="text-align:center;padding:9px;margin-top:6px">Sign in</div></div></div>`,
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS);
+      c.point(0);
+      await c.click('#lu');
+      await c.type('#lu', 'admin');
+      c.point(1);
+      await c.click('#lp');
+      await c.type('#lp', '••••••••••••', 45);
+      c.point(2);
+      await c.click('#lbtn');
+      $('#login').classList.add('gone');
+      c.countUp();
+      await c.wait(900);
+      await c.click('#gear');
+      c.spot('#gear', 'Settings live behind the gear. Start with Account → Change your password.', 'below');
+      await c.wait(2600);
+      c.unspot();
+    },
+  },
+  {
+    title: 'The Hosts dashboard',
+    text: 'Hosts is home. Every device gets a card, grouped by subnet, with live up/down status, response time and a 30-check uptime strip. Checks are plain TCP connects every minute.',
+    points: ['Summary tiles: click one to filter', 'Subnet tabs, search, and All / Up / Down', 'Group cards by subnet, location or your own groups'],
+    where: 'Tab: <code>Hosts</code>',
+    build: () => shell('Hosts'),
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS, { zero: true });
+      $$('.card').forEach((cd, i) => { cd.classList.add('pop-in'); cd.style.animationDelay = `${i * 70}ms`; });
+      c.countUp();
+      await c.wait(900);
+      c.point(0);
+      c.spot('#kpis', 'At-a-glance totals: online, down, alerts, pending updates and vulnerabilities.', 'below');
+      await c.move('[data-kpi="up"]');
+      await c.wait(1800);
+      c.point(1);
+      c.spot('#subnet-tabs', 'Each subnet you add gets its own tab.', 'below');
+      await c.move('#subnet-tabs .tbtn:nth-child(2)');
+      await c.wait(1500);
+      c.spot('.toolbar', 'Search by name, IP, maker or model, or show only hosts that are down.', 'below');
+      await c.move('.search');
+      await c.wait(1800);
+      c.point(2);
+      const card = $('[data-host="pve"]');
+      c.spot(card, 'A card shows status, agent info, recent checks and uptime.', 'right');
+      card.classList.add('hl');
+      await c.move(card, 0.5, 0.4);
+      await c.wait(2400);
+      card.classList.remove('hl');
+      c.unspot();
+    },
+  },
+  {
+    title: 'Live status and alerts',
+    text: 'When a host stops answering, its card turns red and the summary updates on its own. After 3 minutes down, WebMonitor raises an alert and sends it wherever you\'ve set up.',
+    points: ['Cards and tiles update live, no refresh needed', 'An alert bar shows what\'s wrong right now', 'Filter to Down to see just the problems'],
+    where: 'Threshold: <code>Settings → Notifications</code>',
+    build: () => shell('Hosts'),
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS);
+      await c.wait(700);
+      const nas = $('[data-host="nas"]');
+      await c.move(nas, 0.85, 0.15);
+      c.point(0);
+      $('.dot', nas).className = 'dot pending';
+      await c.wait(1100);
+      $('.dot', nas).className = 'dot down';
+      nas.classList.add('is-down');
+      const bars = $$('.ubar i', nas);
+      for (let i = 27; i < 30; i++) { bars[i].classList.add('d'); await c.wait(250); }
+      $('.card-foot span', nas).textContent = 'No answer · 3 min';
+      c.spot(nas, 'nas-01 just went down.', 'right');
+      await c.wait(1400);
+      const down = $('[data-kpi="down"]'), al = $('[data-kpi="alerts"]');
+      down.classList.add('bad'); $('.kpi-value', down).textContent = '1'; $('.kpi-sub', down).textContent = 'needs attention';
+      al.classList.add('bad'); $('.kpi-value', al).textContent = '1'; $('.kpi-sub', al).textContent = '1 critical';
+      $('[data-kpi="up"] .kpi-value').textContent = '7'; $('[data-kpi="up"] .kpi-sub').textContent = '87.5% of active hosts';
+      $('#c-up').textContent = '7'; $('#c-down').textContent = '1';
+      c.point(1);
+      $('#alerts').classList.add('show');
+      await c.wait(500);
+      c.spot('#alerts', 'The alert bar and the Down tile light up, and a notification goes out.', 'below');
+      await c.wait(2600);
+      c.point(2);
+      c.unspot();
+      await c.click('[data-f="down"]');
+      $$('.toolbar [data-f]').forEach(b => b.classList.toggle('active', b.dataset.f === 'down'));
+      $$('.card').forEach(cd => { if (cd !== nas) cd.style.display = 'none'; });
+      $$('.grp-title')[1].style.display = 'none';
+      c.spot(nas, 'Only what needs attention.', 'right');
+      await c.wait(2400);
+      c.unspot();
+    },
+  },
+  {
+    title: 'Host details',
+    text: 'Click any card for the full picture: device info, history graphs kept for over a year, and server details over SNMP or the agent — CPU, memory, disks and interfaces.',
+    points: ['Response time and uptime history', 'CPU, memory and disk at a glance', 'Edit name, type, location and groups'],
+    where: 'Click a card, or its <code>Details</code> button',
+    build: () => shell('Hosts'),
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS);
+      await c.wait(500);
+      const card = $('[data-host="pve"]');
+      card.classList.add('hl');
+      await c.click($('.card-acts .cbtn:nth-child(2)', card));
+      card.classList.remove('hl');
+      c.openModal(`<div class="modal-head"><span style="font-size:22px">🖥️</span><h3>pve-01 <span class="muted mono" style="font-weight:400;font-size:12px">192.168.1.10</span></h3><span class="btn ghost" id="edit">Edit</span><span class="btn ghost">✕</span></div>
+        <div class="modal-body">
+          <div class="tabs"><span class="tbtn active">Overview</span><span class="tbtn">History</span><span class="tbtn">Interfaces</span><span class="tbtn">Updates</span><span class="tbtn">Workloads</span></div>
+          <div class="panel" id="chart" style="margin-bottom:12px"><div class="muted" style="font-size:11px;font-weight:600;margin-bottom:6px">Response time · last 24 hours</div>
+            <svg class="draw" id="draw" viewBox="0 0 760 130" width="100%" height="130">
+              <g stroke="#263049"><line x1="0" y1="30" x2="760" y2="30"/><line x1="0" y1="70" x2="760" y2="70"/><line x1="0" y1="110" x2="760" y2="110"/></g>
+              <path class="area" fill="rgba(91,140,255,.15)" d="M0,96 L40,92 L80,98 L120,90 L160,94 L200,72 L240,88 L280,93 L320,91 L360,60 L400,85 L440,92 L480,95 L520,89 L560,93 L600,78 L640,90 L680,94 L720,91 L760,93 L760,130 L0,130Z"/>
+              <path class="line" fill="none" stroke="#5b8cff" stroke-width="2.5" d="M0,96 L40,92 L80,98 L120,90 L160,94 L200,72 L240,88 L280,93 L320,91 L360,60 L400,85 L440,92 L480,95 L520,89 L560,93 L600,78 L640,90 L680,94 L720,91 L760,93"/>
+            </svg></div>
+          <div class="gauge-row" id="gauges">
+            <div class="panel"><div class="muted" style="font-size:11px;font-weight:600">CPU</div><div style="font-size:20px;font-weight:700">23%</div><div class="meter"><i data-w="23"></i></div></div>
+            <div class="panel"><div class="muted" style="font-size:11px;font-weight:600">Memory</div><div style="font-size:20px;font-weight:700">61% <span class="muted" style="font-size:12px">39 / 64 GB</span></div><div class="meter"><i data-w="61"></i></div></div>
+            <div class="panel"><div class="muted" style="font-size:11px;font-weight:600">Disk /var/lib/vz</div><div style="font-size:20px;font-weight:700">84% <span class="muted" style="font-size:12px">1.6 / 1.9 TB</span></div><div class="meter"><i class="warn" data-w="84"></i></div></div>
+          </div>
+          <table class="tbl" style="margin-top:12px"><tr><th>System</th><th>Uptime</th><th>Model</th><th>Agent</th></tr>
+            <tr><td>Proxmox VE 8.2 · kernel 6.8</td><td>41 days</td><td>Dell PowerEdge R650</td><td><span class="badge ok">Online</span> v2.4</td></tr></table>
+        </div>`);
+      await c.wait(500);
+      c.point(0);
+      $('#draw').classList.add('go');
+      c.spot('#chart', 'History is kept for over a year.', 'below', 4);
+      await c.wait(2600);
+      c.point(1);
+      $$('#gauges .meter i').forEach(i => { i.style.width = i.dataset.w + '%'; });
+      c.spot('#gauges', 'Disks filling up raise their own alert.', 'above', 4);
+      await c.wait(2600);
+      c.point(2);
+      c.spot('#edit', 'Rename it, set its type, location and groups.', 'below');
+      await c.move('#edit');
+      await c.wait(2200);
+      c.unspot();
+      c.closeModal();
+      await c.wait(400);
+    },
+  },
+  {
+    title: 'Add subnets, discover devices',
+    text: 'Tell WebMonitor which networks to watch. It sweeps each subnet on a schedule, adds new devices automatically (or lists them for you to review), and tidies up cards that have been gone a while.',
+    points: ['Add a /24 subnet and name it', 'Turn on scheduled scans and "Add new devices"', 'New devices appear with a New badge'],
+    where: 'Menu: <code>Settings → Subnets → Add subnet</code>',
+    build: () => shell('Hosts'),
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS);
+      await c.wait(400);
+      await c.click('#gear');
+      c.openModal(`<div class="modal-head"><h3>Settings</h3><span class="btn ghost">✕</span></div>
+        <div class="settings"><div class="snav"><span>Account</span><span>Display</span><span class="active">Subnets</span><span>Add hosts</span><span>Groups</span><span>Notifications</span><span>Users</span><span>Agents</span><span>Backups</span></div>
+        <div class="modal-body">
+          <table class="tbl" style="margin-bottom:14px"><tr><th>Subnet</th><th>Name</th><th>Scan</th><th>Auto-add</th></tr>
+            <tr><td class="mono">192.168.1.0/24</td><td>Servers</td><td>every 30 min</td><td><span class="badge ok">On</span></td></tr>
+            <tr id="newrow" style="display:none" class="fade-in"><td class="mono">192.168.20.0/24</td><td>IoT</td><td>every 15 min</td><td><span class="badge ok">On</span></td></tr></table>
+          <div class="panel" id="addform"><div style="font-weight:700;margin-bottom:10px">Add subnet</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+              <div class="field"><label>Subnet</label><div class="input mono" id="f-sub"></div></div>
+              <div class="field"><label>Name</label><div class="input" id="f-name"></div></div>
+              <div class="field"><label>Gateway</label><div class="input mono" id="f-gw"></div></div></div>
+            <div class="toggle"><span class="sw" id="t1"></span>Scan every <b>15</b> minutes</div>
+            <div class="toggle"><span class="sw" id="t2"></span>Add new devices automatically</div>
+            <div class="toggle"><span class="sw on" id="t3"></span>Remove cards not seen for <b>30</b> days</div>
+            <div style="text-align:right"><span class="btn" id="f-add">Add subnet</span></div></div>
+        </div></div>`);
+      await c.wait(600);
+      c.point(0);
+      await c.click('#f-sub'); await c.type('#f-sub', '192.168.20.0/24');
+      await c.click('#f-name'); await c.type('#f-name', 'IoT');
+      await c.click('#f-gw'); await c.type('#f-gw', '192.168.20.1');
+      c.point(1);
+      await c.click('#t1'); $('#t1').classList.add('on');
+      await c.click('#t2'); $('#t2').classList.add('on');
+      await c.click('#f-add');
+      $('#newrow').style.display = '';
+      await c.wait(900);
+      c.closeModal();
+      await c.wait(400);
+      const pill = $('#pill');
+      pill.classList.add('busy'); pill.textContent = 'Scans · sweeping 192.168.20.0/24';
+      c.spot(pill, 'Discovery runs in the background.', 'below');
+      await c.wait(1500);
+      c.unspot();
+      await c.click('#subnet-tabs .tbtn:nth-child(3)');
+      $$('#subnet-tabs .tbtn').forEach((b, n) => b.classList.toggle('active', n === 2));
+      $('#grid1').style.display = 'none'; $$('.grp-title')[0].style.display = 'none';
+      c.point(2);
+      const grid = $('#grid2');
+      for (const h of NEW_HOSTS) {
+        grid.insertAdjacentHTML('beforeend', cardHtml(h, 'pop-in'));
+        await c.wait(500);
+      }
+      pill.classList.remove('busy'); pill.textContent = 'Scans · idle';
+      $$('.grp-title')[1].querySelector('span').textContent = '· 5';
+      $('[data-kpi="all"] .kpi-value').textContent = '11'; $('[data-kpi="up"] .kpi-value').textContent = '11';
+      $('#subnet-tabs .tbtn:nth-child(3) .c').textContent = '5';
+      c.spot('#grid2', 'Found devices get a card and are identified from their MAC maker, hostname, DHCP and Wi-Fi details.', 'above', 4);
+      await c.wait(3000);
+      c.unspot();
+    },
+  },
+  {
+    title: 'Services',
+    text: 'Beyond "is it up?", watch the things people actually use: web pages (status, keywords, response time, certificate expiry), TCP ports, DNS lookups, and systemd or Windows services through the agent.',
+    points: ['Web, port and DNS checks run from the server, no agent needed', 'Certificate expiry is flagged early', 'Restart a failed agent service from the dashboard'],
+    where: 'Tab: <code>Services → Add check</code>',
+    build: () => shell('Services'),
+    async play(c) {
+      c.nav('Services');
+      $('#main').innerHTML = `<div class="head"><div><h2>Services</h2><div class="muted" style="font-size:11px">14 checks · 1 problem</div></div><span class="btn">Add check</span></div>
+        <div class="svc-tiles">${[['Web', 6, 'ok'], ['Ports', 4, 'ok'], ['DNS', 2, 'ok'], ['Agent', 2, 'bad']].map(([n, v, t]) => `<div class="kpi ${t === 'bad' ? 'bad' : ''}"><span class="kpi-label">${n}</span><span class="kpi-value">${v}</span><span class="kpi-sub">${t === 'bad' ? '1 failing' : 'all passing'}</span></div>`).join('')}</div>
+        <div class="tabs"><span class="tbtn active">All</span><span class="tbtn">Problems</span><span class="tbtn">Web</span><span class="tbtn">Ports</span><span class="tbtn">DNS</span><span class="tbtn">Agent</span></div>
+        <div class="panel" style="padding:4px 8px"><table class="tbl" id="svc">
+          <tr><th>Check</th><th>Type</th><th>Target</th><th>Result</th><th>Status</th><th></th></tr>
+          <tr><td>Company website</td><td>Web</td><td class="mono">https://www.example.com</td><td>200 OK · 182 ms · "Welcome" found</td><td><span class="badge ok">Up</span></td><td></td></tr>
+          <tr id="cert"><td>Customer portal</td><td>Web</td><td class="mono">https://portal.example.com</td><td>200 OK · cert expires in <b style="color:var(--pending)">12 days</b></td><td><span class="badge warn">Warning</span></td><td></td></tr>
+          <tr><td>Mail (SMTP)</td><td>Port</td><td class="mono">mail.example.com:587</td><td>open · 21 ms</td><td><span class="badge ok">Up</span></td><td></td></tr>
+          <tr><td>Internal DNS</td><td>DNS</td><td class="mono">intranet.lan @ 192.168.1.11</td><td>A 192.168.1.15</td><td><span class="badge ok">Up</span></td><td></td></tr>
+          <tr id="failed"><td>nginx on pve-01</td><td>Agent · systemd</td><td class="mono">nginx.service</td><td id="fres">failed · exit code 1</td><td id="fst"><span class="badge bad">Failed</span></td><td><span class="cbtn" id="restart">Restart</span></td></tr>
+          <tr><td>Print Spooler on dc-01</td><td>Agent · Windows</td><td class="mono">Spooler</td><td>running</td><td><span class="badge ok">Up</span></td><td><span class="cbtn">Restart</span></td></tr>
+        </table></div>`;
+      $$('#svc tr').forEach((r, i) => { r.classList.add('fade-in'); r.style.animationDelay = `${i * 80}ms`; });
+      await c.wait(900);
+      c.point(0);
+      c.spot('.svc-tiles', 'Totals by type, with failures called out.', 'below');
+      await c.wait(2200);
+      c.point(1);
+      c.spot('#cert', 'Certificates are flagged before they expire.', 'below', 2);
+      await c.move('#cert', 0.6, 0.5);
+      await c.wait(2400);
+      c.point(2);
+      c.spot('#failed', 'A service the agent watches has failed…', 'above', 2);
+      await c.click('#restart');
+      $('#restart').textContent = 'Restarting…'; $('#restart').classList.add('hot');
+      await c.wait(1500);
+      $('#fres').textContent = 'active (running) · restarted by admin';
+      $('#fst').innerHTML = '<span class="badge ok">Up</span>';
+      $('#restart').textContent = 'Restart'; $('#restart').classList.remove('hot');
+      $('.svc-tiles .kpi.bad .kpi-sub').textContent = 'all passing';
+      $('.svc-tiles .kpi.bad').classList.remove('bad');
+      c.spot('#failed', '…and one click brings it back.', 'above', 2);
+      await c.wait(2200);
+      c.unspot();
+    },
+  },
+  {
+    title: 'Network map and speed tests',
+    text: 'The Network tab draws your router, switches and access points as a live map. Every link is coloured and sized by its traffic right now. Scheduled speed tests keep your ISP honest.',
+    points: ['Live link traffic between router, switches and APs', 'Per-port faceplates and history charts', 'Speed tests on a schedule, with a slow-internet alert'],
+    where: 'Tab: <code>Network</code> · needs SNMP on switches',
+    build: () => shell('Network'),
+    async play(c) {
+      c.nav('Network');
+      $('#main').innerHTML = `<div class="head"><h2>Network</h2><span class="btn ghost" id="runst">Run speed test</span></div>
+        <div style="display:grid;grid-template-columns:1fr 290px;gap:12px">
+        <div class="panel" id="map" style="height:520px;position:relative">
+          <svg viewBox="0 0 740 500" width="100%" height="100%">
+            <g fill="none" stroke-linecap="round">
+              <path d="M370,60 L370,170" stroke="#263049" stroke-width="10"/><path class="flow fast" d="M370,60 L370,170" stroke="#f0ad4e" stroke-width="10"/>
+              <path d="M370,170 L180,300" stroke="#263049" stroke-width="6"/><path class="flow" d="M370,170 L180,300" stroke="#33d17a" stroke-width="6"/>
+              <path d="M370,170 L560,300" stroke="#263049" stroke-width="8"/><path class="flow fast" d="M370,170 L560,300" stroke="#5b8cff" stroke-width="8"/>
+              <path d="M180,300 L90,430" stroke="#263049" stroke-width="3"/><path class="flow slow" d="M180,300 L90,430" stroke="#33d17a" stroke-width="3"/>
+              <path d="M180,300 L270,430" stroke="#263049" stroke-width="4"/><path class="flow" d="M180,300 L270,430" stroke="#33d17a" stroke-width="4"/>
+              <path d="M560,300 L480,430" stroke="#263049" stroke-width="3"/><path class="flow slow" d="M560,300 L480,430" stroke="#33d17a" stroke-width="3"/>
+              <path d="M560,300 L650,430" stroke="#263049" stroke-width="5"/><path class="flow" d="M560,300 L650,430" stroke="#5b8cff" stroke-width="5"/>
+            </g>
+            <g font-size="13" fill="#e7ecf7" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,sans-serif">
+              ${[[370, 60, '🌐', 'Internet', '612 Mb/s ↓'], [370, 170, '🛡️', 'fw-01', 'router'], [180, 300, '🔀', 'sw-floor1', '24 ports'], [560, 300, '🔀', 'core-sw-01', '48 ports'],
+                [90, 430, '📶', 'ap-lobby', '18 clients'], [270, 430, '📶', 'ap-office', '31 clients'], [480, 430, '🗄️', 'nas-01', ''], [650, 430, '🖥️', 'pve-01', '']]
+                .map(([x, y, i, n, s]) => `<g id="n-${n}"><circle cx="${x}" cy="${y}" r="26" fill="#161d2e" stroke="#5b8cff" stroke-width="2"/><text x="${x}" y="${y + 7}" font-size="20">${i}</text><text x="${x}" y="${y + 46}" font-weight="600">${n}</text><text x="${x}" y="${y + 62}" fill="#8a94ab" font-size="11">${s}</text></g>`).join('')}
+            </g>
+            <g font-size="11" fill="#8a94ab" font-family="-apple-system,Segoe UI,Roboto,sans-serif"><text x="384" y="118">612 Mb/s</text><text x="478" y="228">410 Mb/s</text><text x="222" y="228">96 Mb/s</text></g>
+          </svg></div>
+        <div style="display:grid;gap:12px;align-content:start">
+          <div class="panel" id="speed" style="text-align:center"><div class="muted" style="font-size:11px;font-weight:600">Internet speed</div>
+            <svg viewBox="0 0 200 120" width="100%" height="140"><path d="M20,105 A80,80 0 0 1 180,105" fill="none" stroke="#2a3348" stroke-width="14" stroke-linecap="round"/>
+              <path id="garc" d="M20,105 A80,80 0 0 1 180,105" fill="none" stroke="#33d17a" stroke-width="14" stroke-linecap="round" stroke-dasharray="252" stroke-dashoffset="252" style="transition:stroke-dashoffset 2.2s ease"/>
+              <text id="gval" x="100" y="96" text-anchor="middle" font-size="28" font-weight="700" fill="#e7ecf7">—</text><text x="100" y="114" text-anchor="middle" font-size="10" fill="#8a94ab">Mb/s down</text></svg>
+            <div class="muted" style="font-size:11px" id="gsub">Last test 06:00 · every 6 hours</div></div>
+          <div class="panel"><div class="muted" style="font-size:11px;font-weight:600;margin-bottom:8px">Busiest links now</div>
+            ${[['fw-01 → core-sw-01', 82], ['core-sw-01 → pve-01', 54], ['fw-01 → sw-floor1', 20]].map(([n, w]) => `<div style="font-size:11px;margin:6px 0 3px">${n}</div><div class="meter"><i data-w="${w}"></i></div>`).join('')}</div>
+        </div></div>`;
+      await c.wait(600);
+      c.point(0);
+      $$('.meter i').forEach(i => { i.style.width = i.dataset.w + '%'; });
+      c.spot('#map', 'Thicker, faster lines carry more traffic. Colours show how busy each link is.', 'right', 2);
+      await c.wait(2600);
+      c.point(1);
+      c.spot('#n-core-sw-01', 'Click a switch for its port faceplate and per-port history.', 'right', 4);
+      await c.move('#n-core-sw-01');
+      await c.wait(2200);
+      c.point(2);
+      c.unspot();
+      await c.click('#runst');
+      $('#gsub').textContent = 'Testing…';
+      $('#garc').style.strokeDashoffset = String(252 * (1 - 0.86));
+      let v = 0;
+      while (v < 941) { v = Math.min(941, v + 37); $('#gval').textContent = v; await c.wait(70); }
+      $('#gsub').innerHTML = '941 down · 38 up · 9 ms · <span style="color:var(--up)">above your 500 Mb/s minimum</span>';
+      c.spot('#speed', 'Get an alert if the connection drops below a minimum you set.', 'left', 4);
+      await c.wait(2600);
+      c.unspot();
+    },
+  },
+  {
+    title: 'Updates with the agent',
+    text: 'Install the small agent on Linux and Windows machines to see pending OS updates, then install them or reboot from here — now, or in a recurring update window. The agent only connects out.',
+    points: ['Add an agent from the host card: one install command', 'See pending and security updates per host', 'Install now or schedule an update window'],
+    where: 'Tab: <code>Updates</code> · agent: host card → <code>Add agent</code>',
+    build: () => shell('Updates'),
+    async play(c) {
+      c.nav('Updates');
+      $('#main').innerHTML = `<div class="head"><div><h2>Updates</h2><div class="muted" style="font-size:11px">2 hosts need updates · 1 security</div></div><span class="btn ghost" id="sched">Update windows</span></div>
+        <div class="panel" style="padding:4px 8px;margin-bottom:12px"><table class="tbl" id="up">
+          <tr><th>Host</th><th>OS</th><th>Pending</th><th>Security</th><th>Reboot</th><th>Job</th><th></th></tr>
+          <tr id="r-pve"><td>🖥️ pve-01</td><td>Proxmox VE 8.2</td><td>3</td><td><span class="badge warn">1</span></td><td>—</td><td id="job"><span class="muted">—</span></td><td><span class="btn" id="inst">Install updates</span></td></tr>
+          <tr><td>🪟 ws-reception</td><td>Windows 11 23H2</td><td>2</td><td>0</td><td>—</td><td><span class="muted">—</span></td><td><span class="btn ghost">Install updates</span></td></tr>
+          <tr><td>🪟 dc-01</td><td>Windows Server 2022</td><td>0</td><td>0</td><td>—</td><td><span class="badge ok">Up to date</span></td><td></td></tr>
+        </table></div>
+        <div class="panel" id="pkgs"><div style="font-weight:700;margin-bottom:8px">pve-01 · pending packages</div>
+          <table class="tbl"><tr><th>Package</th><th>Installed</th><th>Available</th><th></th></tr>
+          <tr><td class="mono">openssl</td><td class="mono">3.0.15-1</td><td class="mono">3.0.16-1</td><td><span class="badge warn">security</span></td></tr>
+          <tr><td class="mono">pve-manager</td><td class="mono">8.2.7</td><td class="mono">8.2.9</td><td></td></tr>
+          <tr><td class="mono">proxmox-kernel-6.8</td><td class="mono">6.8.12-2</td><td class="mono">6.8.12-4</td><td><span class="badge info">needs reboot</span></td></tr></table></div>`;
+      await c.wait(600);
+      c.point(0);
+      c.spot('#up', 'Every host running the agent reports what\'s waiting.', 'below', 2);
+      await c.wait(2400);
+      c.point(1);
+      c.spot('#pkgs', 'Security updates and reboots are flagged.', 'above', 2);
+      await c.wait(2200);
+      c.unspot();
+      await c.click('#inst');
+      $('#inst').textContent = 'Queued'; $('#inst').classList.add('ghost');
+      $('#job').innerHTML = '<span class="jobbar"><i id="jb"></i></span> <span class="muted" id="jt">installing…</span>';
+      for (let p = 0; p <= 100; p += 5) { $('#jb').style.width = p + '%'; await c.wait(110); }
+      $('#job').innerHTML = '<span class="badge ok">Done</span> 3 installed';
+      $('#r-pve td:nth-child(5)').innerHTML = '<span class="badge info">Reboot needed</span>';
+      $('#inst').textContent = 'Reboot'; $('#inst').classList.remove('ghost');
+      c.spot('#r-pve', 'Done. Reboot now or let the update window do it overnight.', 'below', 2);
+      await c.wait(2200);
+      c.point(2);
+      c.unspot();
+      await c.click('#sched');
+      c.openModal(`<div class="modal-head"><h3>Update windows</h3><span class="btn ghost">✕</span></div><div class="modal-body">
+        <table class="tbl"><tr><th>Name</th><th>Hosts</th><th>When</th><th>Action</th></tr>
+        <tr class="fade-in"><td>Servers – Sunday night</td><td>Group: Servers</td><td>Sun 02:00 – 04:00</td><td>Install updates, reboot if needed</td></tr>
+        <tr class="fade-in" style="animation-delay:.15s"><td>Office PCs – weekly</td><td>Group: Office PCs</td><td>Wed 19:00 – 21:00</td><td>Install updates</td></tr></table></div>`);
+      await c.wait(2600);
+      c.closeModal();
+      await c.wait(300);
+    },
+  },
+  {
+    title: 'Reports: inventory, topology, traffic',
+    text: 'Reports answer "what is all this stuff?" The device inventory works out what every address is — consoles, TVs, cameras, printers — and NetFlow shows who\'s using the bandwidth. Export or print any of them.',
+    points: ['Device inventory identifies every address', 'Topology from switch port maps and Wi-Fi', 'Top talkers from NetFlow, per host and per port'],
+    where: 'Tab: <code>Reports</code> · export to CSV or print',
+    build: () => shell('Reports'),
+    async play(c) {
+      c.nav('Reports');
+      $('#main').innerHTML = `<div class="head"><h2>Reports</h2><span class="btn ghost" id="csv">Export CSV</span></div>
+        <div class="tabs" id="rtabs"><span class="tbtn active" data-r="inv">Device inventory</span><span class="tbtn" data-r="topo">Topology</span><span class="tbtn" data-r="traffic">Traffic</span></div>
+        <div id="rbody"></div>`;
+      const inv = `<div class="panel fade-in" style="padding:4px 8px" id="inv"><table class="tbl"><tr><th>Device</th><th>Type</th><th>Maker / model</th><th>IP</th><th>Seen on</th><th>Identified from</th></tr>
+        ${[['🎮', 'PlayStation 5', 'Game console', 'Sony Interactive', '192.168.20.44', 'ap-office · Wi-Fi', 'Wi-Fi fingerprint'],
+           ['📺', 'living-room-tv', 'TV', 'LG webOS TV OLED55', '192.168.20.31', 'sw-floor1 · port 7', 'UPnP, mDNS'],
+           ['📷', 'cam-front-door', 'Camera', 'Hikvision DS-2CD2143', '192.168.20.12', 'core-sw-01 · port 22', 'Web title, MAC maker'],
+           ['🔊', 'Kitchen speaker', 'Smart speaker', 'Sonos One', '192.168.20.51', 'ap-lobby · Wi-Fi', 'mDNS, Home Assistant'],
+           ['🖨️', 'printer-2f', 'Printer', 'Brother HL-L3270CDW', '192.168.1.40', 'sw-floor1 · port 3', 'SNMP'],
+           ['📱', 'Unnamed', 'Phone', 'Apple', '192.168.20.67', 'ap-office · Wi-Fi', 'DHCP, MAC maker']]
+          .map((r, i) => `<tr class="fade-in" style="animation-delay:${i * 90}ms"><td>${r[0]} ${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td class="mono">${r[4]}</td><td>${r[5]}</td><td class="muted">${r[6]}</td></tr>`).join('')}</table></div>`;
+      const topo = `<div class="panel fade-in" id="topo" style="padding:14px"><table class="tbl"><tr><th>Switch</th><th>Port</th><th>VLAN</th><th>Neighbour / device</th><th>Speed</th></tr>
+        ${[['core-sw-01', 'Gi1/0/1', '1', '🛡️ fw-01 (LLDP)', '10 Gb'], ['core-sw-01', 'Gi1/0/2', '1', '🔀 sw-floor1 (CDP)', '1 Gb'], ['core-sw-01', 'Gi1/0/10', '10', '🖥️ pve-01 · 4 VMs, 6 containers', '10 Gb'], ['core-sw-01', 'Gi1/0/22', '20', '📷 cam-front-door', '100 Mb'], ['sw-floor1', 'Gi0/7', '20', '📺 living-room-tv', '1 Gb'], ['sw-floor1', 'Gi0/12', '1', '📶 ap-office · 31 Wi-Fi clients', '1 Gb']]
+          .map((r, i) => `<tr class="fade-in" style="animation-delay:${i * 80}ms"><td>${r[0]}</td><td class="mono">${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td></tr>`).join('')}</table></div>`;
+      const traffic = `<div class="panel fade-in" id="traffic"><div style="font-weight:700;margin-bottom:12px">Top talkers · last hour</div>
+        ${[['🖥️ pve-01', '38.2 GB', 100], ['🎮 PlayStation 5', '21.7 GB', 57], ['📺 living-room-tv', '9.4 GB', 25], ['🗄️ nas-01', '6.1 GB', 16], ['💻 ws-reception', '1.2 GB', 4]]
+          .map(([n, v, w]) => `<div style="display:grid;grid-template-columns:170px 1fr 70px;gap:12px;align-items:center;margin:9px 0"><span>${n}</span><div><div class="hbar" data-w="${w}"></div></div><span class="mono" style="text-align:right">${v}</span></div>`).join('')}
+        <div class="muted" style="font-size:11px;margin-top:10px">Flows reported by more than one switch are counted once.</div></div>`;
+      const show = (k) => { $$('#rtabs .tbtn').forEach(b => b.classList.toggle('active', b.dataset.r === k)); $('#rbody').innerHTML = { inv, topo, traffic }[k]; };
+      show('inv');
+      await c.wait(900);
+      c.point(0);
+      c.spot('#inv', 'Device type is worked out from Wi-Fi, MAC makers, DHCP, deep scans and Home Assistant.', 'below', 2);
+      await c.wait(3000);
+      c.unspot();
+      c.point(1);
+      await c.click('[data-r="topo"]'); show('topo');
+      await c.wait(700);
+      c.spot('#topo', 'Which device is on which switch port, from CDP/LLDP and MAC tables.', 'below', 2);
+      await c.wait(2800);
+      c.unspot();
+      c.point(2);
+      await c.click('[data-r="traffic"]'); show('traffic');
+      await c.wait(100);
+      $$('.hbar').forEach(b => { b.style.width = b.dataset.w + '%'; });
+      await c.wait(1200);
+      c.spot('#traffic', 'Who\'s using the bandwidth, from NetFlow/IPFIX.', 'below', 2);
+      await c.wait(2200);
+      c.spot('#csv', 'Everything exports to CSV or prints cleanly.', 'below');
+      await c.move('#csv');
+      await c.wait(2000);
+      c.unspot();
+    },
+  },
+  {
+    title: 'Notifications',
+    text: 'Choose where alerts go — email, ntfy push to your phone, or a webhook for Discord, Slack or anything that takes JSON — and what to alert on. Problems found in one run arrive as a single digest.',
+    points: ['Add email, ntfy or webhook channels', 'Pick what to alert on and how long before it counts', 'Get one tidy digest, not a flood'],
+    where: 'Menu: <code>Settings → Notifications</code>',
+    build: () => shell('Hosts'),
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS);
+      $('#stage .wm').insertAdjacentHTML('beforeend', `<div class="phone" id="phone"><div style="color:#8a94ab;font-size:11px;text-align:center;margin-bottom:10px">9:44</div>
+        <div class="push" id="p1"><b>🛰️ WebMonitor · ntfy</b>nas-01 is down (192.168.1.20) for 3 min</div>
+        <div class="push" id="p2"><b>🛰️ WebMonitor · ntfy</b>Disk /var/lib/vz on pve-01 is 91% full</div></div>`);
+      await c.wait(300);
+      await c.click('#gear');
+      c.openModal(`<div class="modal-head"><h3>Settings</h3><span class="btn ghost">✕</span></div>
+        <div class="settings"><div class="snav"><span>Account</span><span>Display</span><span>Subnets</span><span>Add hosts</span><span>Groups</span><span class="active">Notifications</span><span>Users</span><span>Agents</span><span>Backups</span></div>
+        <div class="modal-body">
+          <div style="font-weight:700;margin-bottom:8px">Send alerts to</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px" id="chans">
+            <div class="panel"><div style="font-weight:600">✉️ Email</div><div class="muted" style="font-size:11px;margin:4px 0 8px">it@example.com via SMTP</div><div class="toggle" style="margin:0"><span class="sw on"></span>On</div></div>
+            <div class="panel" id="ntfy"><div style="font-weight:600">📲 ntfy</div><div class="muted" style="font-size:11px;margin:4px 0 8px">ntfy.sh/office-alerts</div><div class="toggle" style="margin:0"><span class="sw" id="sw-ntfy"></span>On</div></div>
+            <div class="panel"><div style="font-weight:600">🔗 Webhook</div><div class="muted" style="font-size:11px;margin:4px 0 8px">Discord · #it-alerts</div><div class="toggle" style="margin:0"><span class="sw on"></span>On</div></div></div>
+          <div style="font-weight:700;margin-bottom:6px">Alert on</div>
+          <div id="rules" style="display:grid;grid-template-columns:1fr 1fr;column-gap:20px">
+            ${['Host down for <b>3</b> min', 'Agent offline', 'Disk over <b>90%</b>', 'Service failed', 'Monitored service down', 'Crash or unexpected reboot', 'Bandwidth over limit', 'Internet slower than <b>500</b> Mb/s']
+              .map((r, i) => `<div class="toggle"><span class="sw${i === 6 ? '' : ' on'}"></span>${r}</div>`).join('')}</div>
+          <div style="text-align:right;margin-top:8px"><span class="btn ghost" id="testbtn">Send test</span> <span class="btn">Save</span></div>
+        </div></div>`);
+      await c.wait(600);
+      c.point(0);
+      c.spot('#chans', 'Use as many channels as you like.', 'below', 4);
+      await c.click('#sw-ntfy'); $('#sw-ntfy').classList.add('on');
+      await c.wait(1200);
+      c.point(1);
+      c.spot('#rules', 'Turn each alert on or off and set its threshold.', 'above', 4);
+      await c.move('#rules', 0.3, 0.3);
+      await c.wait(2400);
+      c.unspot();
+      c.point(2);
+      await c.click('#testbtn');
+      c.closeModal();
+      $('#phone').classList.add('show');
+      await c.wait(700);
+      $('#p1').classList.add('show');
+      await c.wait(900);
+      $('#p2').classList.add('show');
+      c.spot('#phone', 'Alerts land on your phone in seconds.', 'left', 4);
+      await c.wait(2800);
+      c.unspot();
+    },
+  },
+  {
+    title: 'WebMonitor Pro extras',
+    pro: true,
+    text: 'With the Pro add-on, host cards gain Remote buttons for Remote Desktop, SSH, VNC and the device\'s web page, plus change records with an audit log, vulnerability scans and FlexLM licence monitoring.',
+    points: ['Remote Desktop, SSH, VNC or web page from a card', 'Vulnerability scans with CVE lookups', 'Change records and a tamper-evident audit log'],
+    where: 'Unlock: <code>Settings → Pro</code>',
+    build: () => shell('Hosts'),
+    async play(c) {
+      $('#main').innerHTML = hostsHtml(HOSTS);
+      await c.wait(400);
+      const card = $('[data-host="dc"]');
+      card.classList.add('hl');
+      const btn = $('.rmt', card);
+      c.point(0);
+      await c.click(btn);
+      btn.classList.add('hot');
+      const r = rel(btn), m = rel($('#main'));
+      $('#main').insertAdjacentHTML('beforeend', `<div class="menu" id="rmenu" style="left:${r.x - m.x}px;top:${r.y - m.y + r.h + 4}px">
+        <div class="hot">🖥️ Remote Desktop</div><div>⌨️ SSH</div><div>👁️ VNC</div><div>🌐 Open web page</div></div>`);
+      requestAnimationFrame(() => $('#rmenu').classList.add('show'));
+      await c.wait(400);
+      c.spot('#rmenu', 'Opens with your own RDP, SSH or VNC app.', 'right', 4);
+      await c.wait(2600);
+      c.unspot();
+      $('#rmenu').remove(); btn.classList.remove('hot'); card.classList.remove('hl');
+      c.point(1);
+      c.nav('Security');
+      $('#main').innerHTML = `<div class="head"><div><h2>Security</h2><div class="muted" style="font-size:11px">Last scan 03:00 · 41 hosts</div></div><span class="btn">Scan now</span></div>
+        <div class="svc-tiles" id="sev">${[['Critical', 0, ''], ['High', 3, 'bad'], ['Medium', 7, 'warn'], ['Low', 12, '']].map(([n, v, t]) => `<div class="kpi ${t}"><span class="kpi-label">${n}</span><span class="kpi-value">${v}</span><span class="kpi-sub">findings</span></div>`).join('')}</div>
+        <div class="panel" style="padding:4px 8px"><table class="tbl"><tr><th>Host</th><th>Finding</th><th>CVE</th><th>Severity</th></tr>
+          <tr class="fade-in"><td>📷 cam-front-door</td><td>Outdated firmware with known RCE</td><td class="mono">CVE-2021-36260</td><td><span class="badge bad">High</span></td></tr>
+          <tr class="fade-in" style="animation-delay:.1s"><td>🖨️ printer-2f</td><td>Telnet open with default credentials page</td><td class="mono">—</td><td><span class="badge bad">High</span></td></tr>
+          <tr class="fade-in" style="animation-delay:.2s"><td>🗄️ nas-01</td><td>SMBv1 enabled</td><td class="mono">CVE-2017-0144</td><td><span class="badge bad">High</span></td></tr></table></div>`;
+      await c.wait(500);
+      c.spot('#sev', 'Findings by severity, from nmap, built-in checks and NVD/OSV lookups.', 'below', 4);
+      await c.wait(2800);
+      c.point(2);
+      c.unspot();
+      await c.click('[data-nav="Updates"]');
+      c.openModal(`<div class="modal-head"><h3>Change record</h3><span class="badge info">Pending approval</span></div><div class="modal-body">
+        <div class="field"><label>Change</label><div class="input">Install updates and reboot pve-01</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label>Requested by</label><div class="input">admin</div></div><div class="field"><label>Window</label><div class="input">Sun 02:00 – 04:00</div></div></div>
+        <div class="panel" style="margin-top:6px"><div class="muted" style="font-size:11px;font-weight:600;margin-bottom:6px">Audit log</div>
+          <div class="mono" style="font-size:11px;line-height:1.8">09:12 admin created change #142<br>09:12 email sent to change-board<br>09:40 jsmith approved · hash 8f3a…c21e</div></div></div>`);
+      await c.wait(3000);
+      c.closeModal();
+      c.nav('Hosts');
+      await c.wait(300);
+    },
+  },
+  {
+    title: 'You\'re ready',
+    text: 'That\'s the tour. Here\'s the order most people set things up in. Help is always one click away from the ? button, with every guide and a search.',
+    points: ['Follow the checklist from the Getting started guide', 'Open Help (?) any time', 'Replay this tour from Help whenever you like'],
+    where: 'Help: the <code>?</code> button, top right',
+    build: () => shell('Hosts'),
+    async play(c) {
+      c.nav('Hosts');
+      $('#main').innerHTML = `<div style="max-width:620px;margin:20px auto 0">
+        <h2 style="font-size:22px;margin:0 0 4px">Your first ten minutes</h2><div class="muted" style="margin-bottom:16px">From an empty dashboard to a monitored network</div>
+        <div class="check-list" id="cl">${[
+          ['Change the admin password', 'Settings → Account'], ['Add your subnets and turn on scans', 'Settings → Subnets'], ['Turn on SNMP on switches and servers', 'for port maps, the network map and server details'],
+          ['Set up where alerts go', 'Settings → Notifications'], ['Add users (Admin or Viewer)', 'Settings → Users'], ['Install agents for updates', 'host card → Add agent']]
+          .map(([a, b]) => `<div><span class="tick">✓</span><span><b>${a}</b><br><span class="muted" style="font-size:11px">${b}</span></span></div>`).join('')}</div></div>`;
+      c.point(0);
+      for (const d of $$('#cl div')) { d.classList.add('show'); await c.wait(260); }
+      for (const d of $$('#cl div')) { d.classList.add('done'); await c.wait(330); }
+      c.point(1);
+      await c.click('#help-ico');
+      c.spot('#help-ico', 'Every guide, searchable, built in.', 'below', 4);
+      await c.wait(2400);
+      c.point(2);
+      c.spot('#help-ico', 'Find "Take the tour" in Help to watch this again.', 'below', 4);
+      await c.wait(2600);
+      c.unspot();
+    },
+  },
+];
+
+/* ---------- Player ---------- */
+let idx = 0, autoplay = true, startedAt = 0, estDur = 1;
+const elTitle = document.getElementById('title'), elText = document.getElementById('text'), elKicker = document.getElementById('kicker');
+const elPoints = document.getElementById('points'), elWhere = document.getElementById('where'), elBar = document.getElementById('bar');
+const btnPlay = document.getElementById('play'), btnPrev = document.getElementById('prev'), btnNext = document.getElementById('next');
+const chapters = document.getElementById('chapters');
+const visited = new Set();
+
+chapters.innerHTML = SCENES.map((s, i) => `<li><button type="button" data-i="${i}"><span class="n">${i + 1}</span>${s.title}${s.pro ? '<span class="pro">PRO</span>' : ''}</button></li>`).join('');
+chapters.addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(+b.dataset.i); });
+
+async function go(i) {
+  idx = Math.max(0, Math.min(SCENES.length - 1, i));
+  const g = ++gen;
+  const s = SCENES[idx];
+  try { history.replaceState(null, '', `#step=${idx + 1}`); } catch (_) { /* file:// or sandboxed */ }
+  elKicker.textContent = `Step ${idx + 1} of ${SCENES.length}${s.pro ? ' · Pro' : ''}`;
+  elTitle.textContent = s.title;
+  elText.textContent = s.text;
+  elPoints.innerHTML = s.points.map(p => `<li>${p}</li>`).join('');
+  elWhere.innerHTML = s.where;
+  btnPrev.disabled = idx === 0;
+  btnNext.textContent = idx === SCENES.length - 1 ? 'Restart ↺' : 'Next →';
+  $$('button', chapters).forEach((b, n) => { b.classList.toggle('active', n === idx); b.classList.toggle('done', visited.has(n) && n !== idx); });
+
+  stage.innerHTML = s.build() + `<div id="ring"></div><div id="callout"></div>
+    <div id="cursor"><svg viewBox="0 0 24 24"><path d="M3 2l7 19 2.6-7.4L20 11z" fill="#fff" stroke="#0f1420" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="ripple"></span></div>`;
+  stage.firstElementChild.classList.add('scene-fade');
+  const cur = document.getElementById('cursor');
+  cur.style.transition = 'none';
+  cur.style.transform = `translate(${cursorPos.x}px, ${cursorPos.y}px)`;
+  void cur.offsetWidth; cur.style.transition = '';
+  document.getElementById('url-hash').textContent = '';
+  fit();
+
+  startedAt = performance.now(); estDur = s.est || 16000; elBar.style.width = '0';
+  try {
+    await s.play(makeCtx(g));
+    visited.add(idx);
+    elBar.style.width = '100%';
+    if (autoplay && idx < SCENES.length - 1) { await wait(1400, g); go(idx + 1); }
+    else if (idx === SCENES.length - 1) { setPlaying(false, true); }
+  } catch (err) { if (err !== CANCEL) console.error(err); }
+}
+
+// Progress bar: time spent (excluding pauses) against a rough scene length.
+let lastTick = performance.now(), spent = 0, spentFor = -1;
+(function tickBar() {
+  const now = performance.now();
+  if (spentFor !== gen) { spent = 0; spentFor = gen; }
+  if (!paused) spent += now - lastTick;
+  lastTick = now;
+  if (elBar.style.width !== '100%') elBar.style.width = `${Math.min(96, spent / estDur * 100)}%`;
+  requestAnimationFrame(tickBar);
+})();
+
+function setPlaying(on, finished = false) {
+  paused = !on; autoplay = on;
+  btnPlay.textContent = finished ? 'Replay tour' : on ? 'Pause' : 'Play';
+}
+btnPlay.addEventListener('click', () => {
+  if (btnPlay.textContent === 'Replay tour') { setPlaying(true); visited.clear(); go(0); return; }
+  setPlaying(paused);
+});
+btnPrev.addEventListener('click', () => go(idx - 1));
+btnNext.addEventListener('click', () => { if (idx === SCENES.length - 1) { visited.clear(); setPlaying(true); go(0); } else go(idx + 1); });
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea')) return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); btnNext.click(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); if (idx > 0) go(idx - 1); }
+  else if (e.key === ' ') { e.preventDefault(); btnPlay.click(); }
+  else if (e.key.toLowerCase() === 'r') go(idx);
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && !paused) { setPlaying(false); } });
+
+const m = location.hash.match(/step=(\d+)/);
+fit();
+go(m ? +m[1] - 1 : 0);
+</script>
+</body>
+</html>
 WEBMON_FILE_EOF
 
 mkdir -p "$(dirname "$APP_DIR/includes/.htaccess")"

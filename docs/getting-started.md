@@ -1,7 +1,8 @@
 # Getting started
 
 You've installed WebMonitor and signed in as `admin`. These steps take you from
-an empty dashboard to a monitored network. Settings are under the gear icon at
+an empty dashboard to a monitored network. New to the dashboard? **Take the tour** (top of
+the Help screen) plays a short animated walkthrough of every tab first. Settings are under the gear icon at
 the top right; most of them need an Admin login.
 
 ## 1. Change the admin password

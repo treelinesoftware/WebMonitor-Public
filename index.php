@@ -20,7 +20,7 @@ $user = require_login_page();
 <link rel="icon" href="favicon.ico" sizes="48x48" />
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="assets/style.css?v=60" />
+<link rel="stylesheet" href="assets/style.css?v=61" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body class="role-<?= $user['role'] === 'admin' ? 'admin' : 'viewer' ?> cols-<?= htmlspecialchars($user['prefs']['columns'], ENT_QUOTES) ?>">
@@ -154,6 +154,7 @@ $user = require_login_page();
     <div class="report-head">
       <div><h2 class="report-title">Help</h2><div class="muted small">Guides for installing, setting up and using WebMonitor</div></div>
       <div class="section-actions no-print">
+        <a class="section-btn help-tour" href="docs/walkthrough.html" target="_blank" rel="noopener">▶ Take the tour</a>
         <input type="search" id="help-search" class="help-search" placeholder="Search help…" aria-label="Search help" />
       </div>
     </div>
@@ -658,6 +659,6 @@ $user = require_login_page();
     if (pro_feature($feature)): ?>
 <script src="pro/assets/<?= $js ?>.js?v=<?= htmlspecialchars(app_version(), ENT_QUOTES) ?>"></script>
 <?php endif; endforeach; ?>
-<script src="assets/help.js?v=4"></script>
+<script src="assets/help.js?v=5"></script>
 </body>
 </html>
